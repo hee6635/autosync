@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
                 val r = remoteJobs(drive, folder)
                 JSONObject().put("n", r.size).put("b", r.sumOf { it.second.size })
             } else {
-                val j = pendingJobs(this, s)
+                val j = pendingJobs(this, s, manual = true)
                 JSONObject().put("n", j.size).put("b", j.sumOf { it.doc.size })
             }
         } catch (e: Exception) { log(this, "새로고침 실패: ${e.message}") }

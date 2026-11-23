@@ -71,8 +71,9 @@ fun listDocs(ctx: Context, uri: Uri): List<Doc> {
 class Job(val doc: Doc, val sub: String, val root: String)
 
 /** 지금 보낼 것 목록(오래된 것부터). 화면의 "N개 · X GB 대기"에도 씀. */
-fun pendingJobs(ctx: Context, s: Settings, skipped: MutableMap<String, Int> = mutableMapOf(), found: (Int) -> Unit = {}): List<Job> {
-    val fresh = System.currentTimeMillis() - 60_000 // 방금 찍어서 아직 쓰는 중일 수 있는 파일은 다음에
+fun pendingJobs(ctx: Context, s: Settings, manual: Boolean, skipped: MutableMap<String, Int> = mutableMapOf(), found: (Int) -> Unit = {}): List<Job> {
+    // 방금 찍어서 아직 쓰는 중일 수 있는 파일은 다음에. 버튼으로 보낼 땐 사람이 찍고 누른 거라 5초만 기다림.
+    val fresh = System.currentTimeMillis() - if (manual) 5_000 else 60_000
     val pending = s.pending
     val uploaded = s.uploaded
     val jobs = mutableListOf<Job>()
@@ -98,11 +99,11 @@ private fun key(d: Doc) = "${d.uri}|${d.size}|${d.modified}"
 private const val QUOTA_MARGIN = 200L * 1024 * 1024
 
 /** 보내는 폰: 폴더 → 드라이브 PixelSync/<하위 폴더>. 여러 개 동시에, 올리면서 MD5 계산 → 일치하면 폰에서 삭제 */
-suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String) {
+suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String, manual: Boolean) {
     val cr = ctx.contentResolver
     val skipped = mutableMapOf<String, Int>()
     Status.stage(2, "폴더 확인 중")
-    val jobs = pendingJobs(ctx, s, skipped) { n -> Status.note = "폴더 확인 중 · ${"%,d".format(n)}개 찾음" }
+    val jobs = pendingJobs(ctx, s, manual, skipped) { n -> Status.note = "폴더 확인 중 · ${"%,d".format(n)}개 찾음" }
     val pending = s.pending
     if (jobs.isEmpty()) { clearPending(ctx, s, pending, emptySet()); Status.note = "보낼 파일 없음"; return }
 

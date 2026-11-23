@@ -33,7 +33,7 @@ h2 { margin: 22px 0 0; font-size: 14px; font-weight: 700; color: var(--sub); }
 .body.in { transform: translateX(24px); opacity: 0; transition: none; }
 
 .ring { position: relative; width: 240px; height: 240px; align-self: center; margin-top: 8px; }
-.ring svg { width: 240px; height: 240px; transform: rotate(-90deg); }
+.ring > svg { width: 240px; height: 240px; transform: rotate(-90deg); }
 .ring circle { fill: none; stroke-width: 18; }
 .ring .track { stroke: var(--tint); }
 .ring .fill { stroke: var(--acc2); stroke-linecap: round; stroke-dasharray: 697.4; stroke-dashoffset: 697.4; transition: stroke-dashoffset .6s var(--ease); }
