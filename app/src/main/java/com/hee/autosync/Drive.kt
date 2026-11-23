@@ -25,6 +25,7 @@ class Drive(private val token: () -> String) {
         private const val API = "https://www.googleapis.com/drive/v3/files"
         private const val UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
         private const val FIELDS = "id,name,md5Checksum,size,modifiedTime"
+        private const val DIR = "application/vnd.google-apps.folder"
 
         fun request(): AuthorizationRequest = AuthorizationRequest.builder()
             .setRequestedScopes(listOf(Scope("https://www.googleapis.com/auth/drive")))
@@ -70,21 +71,36 @@ class Drive(private val token: () -> String) {
 
     private fun q(s: String) = URLEncoder.encode(s, "UTF-8")
 
-    /** 내 드라이브 루트의 PixelSync 폴더 id, 없으면 만듦 */
-    fun folderId(): String {
-        val query = "name='$FOLDER' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false"
+    private fun esc(s: String) = s.replace("\\", "\\\\").replace("'", "\\'")
+
+    /** parent 안의 폴더 id, 없으면 만듦. 기본은 내 드라이브 루트의 PixelSync. */
+    fun folderId(name: String = FOLDER, parent: String = "root"): String {
+        val query = "name='${esc(name)}' and mimeType='$DIR' and '$parent' in parents and trashed=false"
         val found = open("$API?q=${q(query)}&fields=files(id)").json().getJSONArray("files")
         if (found.length() > 0) return found.getJSONObject(0).getString("id")
         return open("$API?fields=id", "POST").apply {
-            sendJson(JSONObject().put("name", FOLDER).put("mimeType", "application/vnd.google-apps.folder"))
+            sendJson(JSONObject().put("name", name).put("mimeType", DIR).put("parents", JSONArray().put(parent)))
         }.json().getString("id")
+    }
+
+    /** parent 바로 아래 폴더들 (id, 이름) */
+    fun subfolders(parent: String): List<Pair<String, String>> {
+        val query = "'$parent' in parents and mimeType='$DIR' and trashed=false"
+        val a = open("$API?q=${q(query)}&pageSize=200&fields=files(id,name)").json().getJSONArray("files")
+        return (0 until a.length()).map { a.getJSONObject(it).let { o -> o.getString("id") to o.getString("name") } }
+    }
+
+    /** 구글 계정 용량 (전체, 사용). 전체가 null이면 무제한. */
+    fun quota(): Pair<Long?, Long> {
+        val q = open("https://www.googleapis.com/drive/v3/about?fields=storageQuota").json().getJSONObject("storageQuota")
+        return q.optString("limit").toLongOrNull() to q.optString("usage", "0").toLong()
     }
 
     fun list(folder: String): List<Remote> {
         val out = mutableListOf<Remote>()
         var page: String? = null
         do {
-            val query = "'$folder' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'"
+            val query = "'$folder' in parents and trashed=false and mimeType!='$DIR'"
             val url = "$API?q=${q(query)}&pageSize=200&orderBy=createdTime&fields=nextPageToken,files($FIELDS)" +
                 (page?.let { "&pageToken=${q(it)}" } ?: "")
             val o = open(url).json()
@@ -96,7 +112,7 @@ class Drive(private val token: () -> String) {
     }
 
     /** 이어받기 방식 업로드. 드라이브는 업로드가 끝나야 파일이 보이므로 반쯤 올라간 파일을 받는 쪽이 볼 일은 없음. */
-    fun upload(folder: String, name: String, size: Long, modified: Long, mime: String, data: InputStream): Remote {
+    fun upload(folder: String, name: String, size: Long, modified: Long, mime: String, data: InputStream, progress: (Long) -> Unit = {}): Remote {
         val meta = JSONObject().put("name", name).put("parents", JSONArray().put(folder))
             .put("modifiedTime", Instant.ofEpochMilli(modified).toString())
         val start = open("$UPLOAD?uploadType=resumable&fields=$FIELDS", "POST").apply {
@@ -115,13 +131,13 @@ class Drive(private val token: () -> String) {
             setFixedLengthStreamingMode(size)
             setRequestProperty("Content-Type", mime)
         }
-        data.use { input -> put.outputStream.use { input.copyTo(it, 1 shl 16) } }
+        data.use { input -> put.outputStream.use { copy(input, it, progress) } }
         return remote(put.json())
     }
 
-    fun download(id: String, out: OutputStream) {
+    fun download(id: String, out: OutputStream, progress: (Long) -> Unit = {}) {
         val c = open("$API/$id?alt=media").ok()
-        c.inputStream.use { it.copyTo(out, 1 shl 16) }
+        c.inputStream.use { copy(it, out, progress) }
     }
 
     fun delete(id: String) {
@@ -129,9 +145,24 @@ class Drive(private val token: () -> String) {
     }
 }
 
+/** 복사하면서 지금까지 옮긴 바이트를 알려줌 */
+fun copy(input: InputStream, out: OutputStream, progress: (Long) -> Unit) {
+    val buf = ByteArray(1 shl 16)
+    var done = 0L
+    while (true) {
+        val n = input.read(buf)
+        if (n < 0) break
+        out.write(buf, 0, n)
+        done += n
+        progress(done)
+    }
+}
+
+fun hex(b: ByteArray) = b.joinToString("") { "%02x".format(it) }
+
 fun md5(input: InputStream): String {
     val d = MessageDigest.getInstance("MD5")
     val buf = ByteArray(1 shl 16)
     input.use { while (true) { val n = it.read(buf); if (n < 0) break; d.update(buf, 0, n) } }
-    return d.digest().joinToString("") { "%02x".format(it) }
+    return hex(d.digest())
 }

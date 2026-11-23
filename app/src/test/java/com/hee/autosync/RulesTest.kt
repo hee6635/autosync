@@ -1,6 +1,8 @@
 package com.hee.autosync
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 import java.io.File
@@ -31,6 +33,20 @@ class RulesTest {
         File(dir, "p_1.jpg").writeText("x")
         assertEquals("p_2.jpg", uniqueFile(dir, "p.jpg").name)
         assertEquals("n.mp4", uniqueFile(dir, "n.mp4").name)
+    }
+
+    @Test fun inWindow() {
+        assertTrue(inWindow(100, -1, -1))           // 예약 없음
+        assertTrue(inWindow(130, 120, 360))         // 02:10, 02:00~06:00
+        assertFalse(inWindow(360, 120, 360))        // 끝 시각은 밖
+        assertTrue(inWindow(23 * 60, 22 * 60, 360)) // 자정 넘는 시간대
+        assertTrue(inWindow(60, 22 * 60, 360))
+        assertFalse(inWindow(12 * 60, 22 * 60, 360))
+    }
+
+    @Test fun uniqueFileTaken() {
+        val dir = Files.createTempDirectory("t").toFile()
+        assertEquals("a_1.jpg", uniqueFile(dir, "a.jpg", setOf("a.jpg")).name)
     }
 
     @Test fun md5() {

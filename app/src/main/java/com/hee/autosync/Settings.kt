@@ -1,6 +1,8 @@
 package com.hee.autosync
 
 import android.content.Context
+import android.os.Build
+import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -9,21 +11,24 @@ import java.util.Locale
 class Settings(ctx: Context) {
     private val p = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
-    var receiver: Boolean
-        get() = p.getBoolean("receiver", false)
-        set(v) = p.edit().putBoolean("receiver", v).apply()
-    var wifiOnly: Boolean
-        get() = p.getBoolean("wifiOnly", true)
-        set(v) = p.edit().putBoolean("wifiOnly", v).apply()
-    var chargingOnly: Boolean
-        get() = p.getBoolean("chargingOnly", false)
-        set(v) = p.edit().putBoolean("chargingOnly", v).apply()
-    var deleteAfter: Boolean
-        get() = p.getBoolean("deleteAfter", true)
-        set(v) = p.edit().putBoolean("deleteAfter", v).apply()
-    var minFreeGb: Int
-        get() = p.getInt("minFreeGb", 10)
-        set(v) = p.edit().putInt("minFreeGb", v).apply()
+    private fun bool(k: String, d: Boolean) = p.getBoolean(k, d)
+    private fun setBool(k: String, v: Boolean) = p.edit().putBoolean(k, v).apply()
+    private fun int(k: String, d: Int) = p.getInt(k, d)
+    private fun setInt(k: String, v: Int) = p.edit().putInt(k, v).apply()
+
+    var receiver: Boolean get() = bool("receiver", false); set(v) = setBool("receiver", v)
+    var wifiOnly: Boolean get() = bool("wifiOnly", true); set(v) = setBool("wifiOnly", v)
+    var chargingOnly: Boolean get() = bool("chargingOnly", false); set(v) = setBool("chargingOnly", v)
+    /** 처음 시작 질문에서 정함. 답하기 전엔 보내지 않음. */
+    var deleteAfter: Boolean get() = bool("deleteAfter2", false); set(v) = setBool("deleteAfter2", v)
+    var askedDelete: Boolean get() = bool("askedDelete", false); set(v) = setBool("askedDelete", v)
+    var concurrency: Int get() = int("concurrency", 3); set(v) = setInt("concurrency", v.coerceIn(1, 5))
+    var minFreeGb: Int get() = int("minFreeGb", 10); set(v) = setInt("minFreeGb", v)
+    /** 예약 시간대, 하루 중 분(0~1439). 시작 -1 = 예약 없음(언제나). */
+    var upStart: Int get() = int("upStart", -1); set(v) = setInt("upStart", v)
+    var upEnd: Int get() = int("upEnd", -1); set(v) = setInt("upEnd", v)
+    var downStart: Int get() = int("downStart", -1); set(v) = setInt("downStart", v)
+    var downEnd: Int get() = int("downEnd", -1); set(v) = setInt("downEnd", v)
 
     /** 자동으로 보낼 폴더(SAF 트리 URI): DCIM/Camera, SD카드 등 */
     var autoTrees: Set<String>
@@ -40,6 +45,24 @@ class Settings(ctx: Context) {
     var folderId: String?
         get() = p.getString("folderId", null)
         set(v) = p.edit().putString("folderId", v).apply()
+
+    /** 폰 폴더 → 드라이브 PixelSync 안 하위 폴더 이름 */
+    fun sub(uri: String): String = JSONObject(p.getString("subs", "{}")!!).optString(uri, defaultSub())
+    fun setSub(uri: String, name: String) {
+        val o = JSONObject(p.getString("subs", "{}")!!).put(uri, name)
+        p.edit().putString("subs", o.toString()).apply()
+    }
+    fun defaultSub(): String = p.getString("defaultSub", null) ?: Build.MODEL.ifBlank { "폰" }
+
+    fun inUploadWindow(now: Int) = inWindow(now, upStart, upEnd)
+    fun inDownloadWindow(now: Int) = inWindow(now, downStart, downEnd)
+}
+
+/** 예약 시간대 안인가. 자정을 넘는 시간대(22:00~06:00)도 됨. */
+fun inWindow(now: Int, start: Int, end: Int): Boolean = when {
+    start < 0 || start == end -> true
+    start < end -> now in start until end
+    else -> now >= start || now < end
 }
 
 private val logLock = Any()
@@ -48,7 +71,7 @@ fun log(ctx: Context, msg: String) = synchronized(logLock) {
     val f = File(ctx.filesDir, "log.txt")
     val time = SimpleDateFormat("MM-dd HH:mm", Locale.KOREA).format(Date())
     val lines = (if (f.exists()) f.readLines() else emptyList()) + "$time $msg"
-    f.writeText(lines.takeLast(200).joinToString("\n"))
+    f.writeText(lines.takeLast(300).joinToString("\n"))
 }
 
 fun readLog(ctx: Context): String =

@@ -6,6 +6,16 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
 import android.provider.OpenableColumns
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import java.security.DigestInputStream
+import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 data class Doc(val uri: Uri, val name: String, val size: Long, val modified: Long, val mime: String)
 
@@ -57,47 +67,105 @@ fun listDocs(ctx: Context, uri: Uri): List<Doc> {
     return out
 }
 
-/** 보내는 폰: 자동 폴더 + 수동으로 고른 것 → 드라이브 → MD5 일치하면 폰에서 삭제 */
-fun upload(ctx: Context, s: Settings, drive: Drive, folder: String) {
-    val cr = ctx.contentResolver
+/** 보낼 파일 하나와 드라이브 하위 폴더 */
+class Job(val doc: Doc, val sub: String, val root: String)
+
+/** 지금 보낼 것 목록(오래된 것부터). 화면의 "N개 · X GB 대기"에도 씀. */
+fun pendingJobs(ctx: Context, s: Settings, skipped: MutableMap<String, Int> = mutableMapOf()): List<Job> {
     val fresh = System.currentTimeMillis() - 60_000 // 방금 찍어서 아직 쓰는 중일 수 있는 파일은 다음에
     val pending = s.pending
-    var sent = 0
-    val skipped = mutableMapOf<String, Int>()
-
+    val uploaded = s.uploaded
+    val jobs = mutableListOf<Job>()
     for (root in s.autoTrees + pending) {
-        val rootUri = Uri.parse(root)
-        val docs = try { listDocs(ctx, rootUri) } catch (e: Exception) {
+        val docs = try { listDocs(ctx, Uri.parse(root)) } catch (e: Exception) {
             log(ctx, "폴더 읽기 실패(권한 확인): ${e.message}"); continue
         }
         for (d in docs) {
             val why = skipReason(d.name, d.size)
             if (why != null) { skipped[why] = (skipped[why] ?: 0) + 1; continue }
             if (root !in pending && d.modified > fresh) continue
-            val key = "${d.uri}|${d.size}|${d.modified}"
-            if (key in s.uploaded) continue
-
-            val local = md5(cr.openInputStream(d.uri) ?: continue)
-            val r = drive.upload(folder, d.name, d.size, d.modified, d.mime.ifEmpty { "application/octet-stream" },
-                cr.openInputStream(d.uri) ?: continue)
-            if (r.md5 != local) {
-                log(ctx, "MD5 불일치, 폰 파일 보관: ${d.name}")
-                drive.delete(r.id)
-                continue
-            }
-            if (s.deleteAfter) {
-                val deleted = try { DocumentsContract.deleteDocument(cr, d.uri) } catch (e: Exception) { false }
-                if (!deleted) log(ctx, "업로드됨, 폰 삭제 실패(쓰기 권한 없음): ${d.name}")
-            } else s.uploaded = s.uploaded + key
-            sent++
-            log(ctx, "보냄 ${d.name}")
-        }
-        if (root in pending) {
-            s.pending = s.pending - root
-            try { cr.releasePersistableUriPermission(rootUri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
-            catch (_: SecurityException) {}
+            if (key(d) in uploaded) continue
+            jobs += Job(d, s.sub(root), root)
         }
     }
-    if (sent > 0 || pending.isNotEmpty())
-        log(ctx, "보내기 완료 ${sent}개" + if (skipped.isEmpty()) "" else ", 건너뜀 " + skipped.entries.joinToString { "${it.key} ${it.value}" })
+    return jobs.distinctBy { it.doc.uri }.sortedBy { it.doc.modified }
+}
+
+private fun key(d: Doc) = "${d.uri}|${d.size}|${d.modified}"
+
+private const val QUOTA_MARGIN = 200L * 1024 * 1024
+
+/** 보내는 폰: 폴더 → 드라이브 PixelSync/<하위 폴더>. 여러 개 동시에, 올리면서 MD5 계산 → 일치하면 폰에서 삭제 */
+suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String) {
+    val cr = ctx.contentResolver
+    val skipped = mutableMapOf<String, Int>()
+    val jobs = pendingJobs(ctx, s, skipped)
+    val pending = s.pending
+    if (jobs.isEmpty()) { clearPending(ctx, s, pending, emptySet()); return }
+
+    val (limit, usage) = drive.quota()
+    val free = AtomicLong(if (limit == null) Long.MAX_VALUE else limit - usage)
+    val subIds = ConcurrentHashMap<String, String>()
+    val failedRoots = ConcurrentHashMap.newKeySet<String>()
+    val full = AtomicBoolean(false)
+    val sent = AtomicInteger(0)
+    val deleteAfter = s.deleteAfter
+    val lock = Any()
+
+    Status.start(jobs.size, jobs.sumOf { it.doc.size })
+    val gate = Semaphore(s.concurrency)
+    try {
+        coroutineScope {
+            for (j in jobs) launch {
+                gate.withPermit {
+                    val d = j.doc
+                    if (full.get() || free.get() - d.size < QUOTA_MARGIN) {
+                        if (!full.getAndSet(true)) log(ctx, "구글 계정 용량 부족, 업로드 멈춤")
+                        failedRoots += j.root; return@withPermit
+                    }
+                    Status.items[d.name] = 0
+                    try {
+                        val sub = synchronized(subIds) { subIds.getOrPut(j.sub) { drive.folderId(j.sub, folder) } } // 같은 폴더를 두 번 만들지 않게
+                        val md = MessageDigest.getInstance("MD5")
+                        val input = cr.openInputStream(d.uri) ?: throw java.io.IOException("파일을 열 수 없음")
+                        val r = drive.upload(sub, d.name, d.size, d.modified, d.mime.ifEmpty { "application/octet-stream" },
+                            DigestInputStream(input, md)) { n -> Status.items[d.name] = (n * 100 / d.size).toInt() }
+                        if (r.md5 != hex(md.digest())) {
+                            drive.delete(r.id)
+                            throw java.io.IOException("MD5 불일치, 폰 파일 보관")
+                        }
+                        free.addAndGet(-d.size)
+                        Stats.add(ctx, "up", d.name, d.size)
+                        sent.incrementAndGet()
+                        if (deleteAfter) {
+                            val deleted = try { DocumentsContract.deleteDocument(cr, d.uri) } catch (e: Exception) { false }
+                            if (deleted) Stats.add(ctx, "delLocal", d.name, d.size)
+                            else log(ctx, "업로드됨, 폰 삭제 실패(쓰기 권한 없음): ${d.name}")
+                        } else synchronized(lock) { s.uploaded = s.uploaded + key(d) }
+                    } catch (e: Exception) {
+                        failedRoots += j.root
+                        log(ctx, "실패 ${d.name}: ${e.message}")
+                    } finally {
+                        Status.items.remove(d.name)
+                        Status.done(d.size)
+                    }
+                }
+            }
+        }
+    } finally {
+        Status.stop()
+    }
+    clearPending(ctx, s, pending, failedRoots)
+    log(ctx, "보내기 ${sent.get()}/${jobs.size}개" + if (skipped.isEmpty()) "" else ", 건너뜀 " + skipped.entries.joinToString { "${it.key} ${it.value}" })
+}
+
+/** 수동으로 고른 것 중 다 보낸 것만 목록에서 빼고 권한 반납 */
+private fun clearPending(ctx: Context, s: Settings, pending: Set<String>, failed: Set<String>) {
+    val done = pending - failed
+    if (done.isEmpty()) return
+    s.pending = s.pending - done
+    for (root in done) try {
+        ctx.contentResolver.releasePersistableUriPermission(Uri.parse(root),
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+    } catch (_: SecurityException) {}
 }
