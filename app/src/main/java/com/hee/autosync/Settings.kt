@@ -52,6 +52,10 @@ class Settings(ctx: Context) {
     var lastPeer: String
         get() = p.getString("lastPeer", "")!!
         set(v) = p.edit().putString("lastPeer", v).apply()
+    /** 보낸 뒤 폰에서 못 지운 공유 파일 "uri\t크기\t이름" → 화면에서 삭제 확인창으로 지움 */
+    var toDelete: Set<String>
+        get() = p.getStringSet("toDelete", emptySet())!!.toSet()
+        set(v) = p.edit().putStringSet("toDelete", v).apply()
     var folderId: String?
         get() = p.getString("folderId", null)
         set(v) = p.edit().putString("folderId", v).apply()

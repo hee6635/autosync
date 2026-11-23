@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.StatFs
 import android.provider.DocumentsContract
+import android.provider.MediaStore
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
@@ -47,11 +48,54 @@ class MainActivity : ComponentActivity() {
         s.pending = s.pending + uri.toString()
         syncNow(this); reload()
     }
-    private val pickFiles = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isEmpty()) return@registerForActivityResult
+    /** 파일 고르기: 갤러리·파일 관리자 등 고르는 앱을 사용자가 선택 */
+    private val pickFiles = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        val d = r.data ?: return@registerForActivityResult
+        val c = d.clipData
+        addPending(if (c != null) (0 until c.itemCount).map { c.getItemAt(it).uri } else listOfNotNull(d.data))
+    }
+    /** 보낸 뒤 공유로 받은 파일 지우기: 안드로이드 기본 삭제 확인창 */
+    private val deleteLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
+        val items = s.toDelete
+        if (r.resultCode == RESULT_OK) items.forEach { e -> e.split('\t').let { Stats.add(this, "delLocal", it.getOrElse(2) { "" }, it.getOrElse(1) { "0" }.toLong()) } }
+        else log(this, "폰에서 지우기 안 함 ${items.size}개")
+        s.toDelete = emptySet()
+        reload()
+    }
+
+    // shortcut: 공유·다른 앱에서 받은 파일 권한은 이 화면(작업)이 살아 있는 동안만 유효할 수 있음. 앱을 완전히 닫으면 못 읽을 수 있어 바로 보냄.
+    private fun addPending(uris: List<Uri>) {
+        if (uris.isEmpty()) return
         uris.forEach(::persist)
         s.pending = s.pending + uris.map { it.toString() }
+        log(this, "보낼 파일 ${uris.size}개 추가")
         syncNow(this); reload()
+    }
+
+    /** 갤러리 등에서 공유 → Auto Sync */
+    private fun handleShare(i: Intent?) {
+        @Suppress("DEPRECATION")
+        val uris = when (i?.action) {
+            Intent.ACTION_SEND -> listOfNotNull(i.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))
+            Intent.ACTION_SEND_MULTIPLE -> i.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty()
+            else -> return
+        }
+        i.action = null // 화면을 돌려도 두 번 추가하지 않게
+        if (s.receiver) { log(this, "받는 폰 모드라 공유한 파일은 보내지 않음"); return }
+        addPending(uris)
+    }
+
+    private fun confirmDelete() {
+        if (Build.VERSION.SDK_INT < 30 || s.toDelete.isEmpty()) return
+        val uris = s.toDelete.map { Uri.parse(it.substringBefore('\t')) }
+        try {
+            deleteLauncher.launch(IntentSenderRequest.Builder(MediaStore.createDeleteRequest(contentResolver, uris).intentSender).build())
+        } catch (e: Exception) { log(this, "삭제 확인창 실패: ${e.message}"); s.toDelete = emptySet() }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleShare(intent)
     }
     private val askPerms = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { reload() }
 
@@ -78,6 +122,7 @@ class MainActivity : ComponentActivity() {
             askPerms.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
         schedule(this)
         DirectService.sync(this)
+        handleShare(intent)
     }
 
     override fun onResume() {
@@ -133,7 +178,7 @@ class MainActivity : ComponentActivity() {
             }
             return JSONObject()
                 .put("receiver", s.receiver).put("signedIn", signedIn).put("auto", s.auto)
-                .put("direct", s.direct).put("lastPeer", s.lastPeer)
+                .put("direct", s.direct).put("lastPeer", s.lastPeer).put("toDelete", s.toDelete.size)
                 .put("batteryOk", getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(packageName))
                 .put("askedBattery", getSharedPreferences("settings", MODE_PRIVATE).getBoolean("askedBattery", false))
                 .put("wifiOnly", s.wifiOnly).put("chargingOnly", s.chargingOnly)
@@ -211,7 +256,11 @@ class MainActivity : ComponentActivity() {
                 // DCIM/Camera에서 시작. SD카드는 선택 화면 메뉴에서 고르면 됨.
                 "addFolder" -> addFolder.launch(DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:DCIM/Camera"))
                 "removeFolder" -> { release(Uri.parse(arg)); s.autoTrees = s.autoTrees - arg; reload() }
-                "pickFiles" -> pickFiles.launch(arrayOf("image/*", "video/*"))
+                "pickFiles" -> pickFiles.launch(Intent.createChooser(
+                    Intent(Intent.ACTION_GET_CONTENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE)
+                        .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/*", "video/*"))
+                        .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true), "어디서 고를까요?"))
+                "confirmDelete" -> confirmDelete()
                 "pickFolder" -> pickFolder.launch(null)
                 "storage" -> askPerms.launch(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE))
                 "reload" -> reload()

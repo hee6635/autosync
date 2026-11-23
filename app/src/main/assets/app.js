@@ -231,13 +231,16 @@ function render() {
   } else renderHome();
   if (!S.receiver && !S.askedDelete && !$('#askDialog').classList.contains('on')) openLayer($('#askDialog'));
 }
-let wasBusy = false, askedBattery = false;
+let wasBusy = false, askedBattery = false, askedDel = false;
 function refresh() {
   try {
     S = JSON.parse(A.state());
     if (wasBusy && !S.status.busy) A.act('reload', ''); // 끝나면 남은 개수 다시 세기
     wasBusy = S.status.busy;
     render();
+    // 공유로 보낸 파일 중 폰에서 못 지운 것 → 기본 삭제 확인창 (한 번에)
+    if (S.toDelete > 0 && !S.status.busy && !askedDel) { askedDel = true; A.act('confirmDelete', ''); }
+    if (S.toDelete === 0) askedDel = false;
     // 처음 질문 뒤 한 번: 배터리 최적화 제외 요청 (앱을 내려도 안 끊기게)
     if ((S.askedDelete || S.receiver) && !S.batteryOk && !S.askedBattery && !askedBattery) { askedBattery = true; A.act('batteryOnce', ''); }
   } catch (e) { console.error(e); }

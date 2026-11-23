@@ -6,6 +6,8 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
 import android.provider.OpenableColumns
+import android.provider.MediaStore
+import android.os.Build
 import kotlinx.coroutines.coroutineScope
 import org.json.JSONObject
 import java.util.UUID
@@ -172,7 +174,10 @@ suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String, manu
                         if (deleteAfter) {
                             val deleted = try { DocumentsContract.deleteDocument(cr, d.uri) } catch (e: Exception) { false }
                             if (deleted) Stats.add(ctx, "delLocal", d.name, d.size)
-                            else log(ctx, "업로드됨, 폰 삭제 실패(쓰기 권한 없음): ${d.name}")
+                            // 공유·다른 앱에서 받은 파일은 읽기만 허락됨 → 화면에서 한 번에 삭제 확인
+                            else if (d.uri.authority == MediaStore.AUTHORITY && Build.VERSION.SDK_INT >= 30)
+                                synchronized(lock) { s.toDelete = s.toDelete + "${d.uri}\t${d.size}\t${d.name}" }
+                            else log(ctx, "업로드됨, 폰 삭제 못 함(앱이 허락 안 함): ${d.name}")
                         } else synchronized(lock) { s.uploaded = s.uploaded + key(d) }
                     } catch (e: Exception) {
                         failedRoots += j.root
