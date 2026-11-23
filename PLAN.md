@@ -16,10 +16,10 @@
 - 자동 업로드: `DCIM/Camera` + SD카드 폴더 선택
 - 수동 업로드: 파일 선택 / 폴더 선택
 - 전송 → 받은 쪽 MD5 일치 확인 → 로컬 삭제
-- 여러 대가 보내도 기기별 하위 폴더 + MD5로 중복 거름
+- 여러 대가 보내도 한 폴더(PixelSync), 받는 쪽이 같은 이름+같은 MD5면 중복으로 처리
 - **토글: "보낸 후 삭제"** (자동/수동 모두 적용, 기본 켜짐)
 - 구글포토 지원 형식만, 크기 제한 초과 시 알림
-- 삭제는 MANAGE_EXTERNAL_STORAGE로 확인창 없이
+- 폴더 접근은 SAF(폴더 선택 화면)로: DCIM/Camera, SD카드 모두. 모든 파일 접근 권한 불필요
 
 ## 받는 폰 모드 (픽셀1, 128GB)
 - 직접 수신 서버(같은 와이파이, 기기 찾기는 NSD) → `DCIM/Camera` → MD5 응답
@@ -41,13 +41,18 @@ app/src/main/java/com/hee/autosync/
   MainActivity.kt     한 화면: 모드, 로그인, 폴더, 수동 업로드, 토글, 상태/로그
   Settings.kt
   Drive.kt            로그인 + 목록/업로드/다운로드/삭제
-  Db.kt               파일 기록(경로, 크기, MD5, 상태, 시간)
-  UploadWorker.kt     메인폰
-  DownloadWorker.kt   픽셀1 + 남은 파일 감시
+  Sync.kt             WorkManager 15분 주기 + 지금 실행
+  Upload.kt           보내는 폰
+  Download.kt         받는 폰 (남은 파일 감시는 4단계)
   Lan.kt              직접 전송 (수신 서버 + 보내기 + 기기 찾기)
   PhotosWatcher.kt    구글포토 알림 감시
   FreeUpService.kt    화면 읽기로 공간 확보
 ```
+
+## 진행
+- [x] 1~2단계: 빌드, 로그인, 드라이브 보내기/받기 (DB 대신 SharedPreferences)
+- [ ] 3단계: 같은 와이파이 직접 전송
+- [ ] 4단계: 구글포토 알림 감시 + 공간 확보 자동화 + 남은 파일 알림
 
 ## 사용자가 할 일
 1. Google Cloud: Drive API 켜기, OAuth 동의 화면 테스트 사용자 추가, 안드로이드 OAuth 클라이언트(패키지명 + SHA-1)
