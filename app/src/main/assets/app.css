@@ -132,3 +132,33 @@ pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; line-height
 .dialog .btns { width: 100%; padding-top: 8px; }
 .dIcon { width: 64px; height: 64px; border-radius: 32px; background: var(--tint); color: var(--acc); display: flex; align-items: center; justify-content: center; }
 .dIcon svg { width: 28px; height: 28px; }
+
+/* 진행 단계 · 파일 막대 (펼치고 접힐 때 높이 스르르) */
+.spin { animation: spin .8s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
+.collapse { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .36s var(--ease), opacity .3s var(--ease); margin: -8px 0; }
+.collapse.open { grid-template-rows: 1fr; opacity: 1; margin: 0; }
+.collapse > div { overflow: hidden; }
+.steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 4px 0 6px; }
+.st { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; color: var(--sub); }
+.dot { width: 22px; height: 22px; border-radius: 11px; border: 2px solid var(--line); display: flex; align-items: center; justify-content: center; background: #fff; position: relative; z-index: 1; transition: border-color .3s, background .3s; }
+.dot svg { width: 14px; height: 14px; stroke-width: 3; color: #fff; transform: scale(0); transition: transform .3s var(--ease); }
+.dot i { position: absolute; width: 8px; height: 8px; border-radius: 4px; background: var(--acc2); transform: scale(0); transition: transform .3s var(--ease); }
+.st.cur { color: var(--acc); font-weight: 700; } .st.cur .dot { border-color: var(--acc2); } .st.cur .dot i { transform: scale(1); }
+.st.done { color: var(--fg); } .st.done .dot { background: var(--acc2); border-color: var(--acc2); } .st.done .dot svg { transform: scale(1); }
+.st .ln { position: absolute; top: 10px; left: calc(50% + 11px); width: calc(100% - 22px); height: 2px; background: var(--line); overflow: hidden; }
+.st .ln b { position: absolute; inset: 0; background: var(--acc2); transform: scaleX(0); transform-origin: left; transition: transform .4s var(--ease); }
+.st.done .ln b { transform: scaleX(1); }
+.files { display: flex; flex-direction: column; gap: 14px; padding: 2px 0 8px; }
+.f { display: flex; align-items: center; gap: 12px; } .f .ic { color: var(--sub); }
+.f .w { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.f .t { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; } .f .t span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .f .t b { color: var(--acc); }
+.f .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.f .bar i { display: block; height: 6px; border-radius: 3px; background: var(--acc2); transform-origin: left; transform: scaleX(0); transition: transform .6s linear; }
+.chip svg.spin { stroke-width: 3; }
+/* 아래 버튼 상태: 시작 중(연한) · 취소하기(빨강) */
+#mainBtn { display: flex; align-items: center; justify-content: center; gap: 8px; transition: transform .15s var(--ease), background .3s var(--ease), color .3s var(--ease); }
+#mainBtn.soft { background: var(--tint); color: var(--acc); }
+#mainBtn.stop { background: #FFEFED; color: var(--red); }
+#mainBtn svg { width: 20px; height: 20px; stroke-width: 3; }
+.primary.danger { background: var(--red); }
+.dIcon.red { background: #FFEFED; color: var(--red); }

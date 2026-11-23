@@ -14,6 +14,10 @@ object Status {
     @Volatile var remainCount = 0
     @Volatile var remainBytes = 0L
     @Volatile var note = ""
+    /** 작업 중(준비 단계 포함) · 단계 0 로그인 1 접속 2 폴더/목록 3 용량/공간 4 옮기는 중 · 취소 요청 */
+    @Volatile var busy = false
+    @Volatile var step = -1
+    @Volatile var cancelled = false
     /** 지금 옮기는 파일 이름 → % */
     val items = ConcurrentHashMap<String, Int>()
 
@@ -22,12 +26,18 @@ object Status {
     }
     @Synchronized fun done(bytes: Long) { remainCount--; remainBytes -= bytes }
     fun stop() { running = false; items.clear() }
+    fun stage(n: Int, text: String) { step = n; note = text }
+
+    /** 옮기는 중 진행 알림에서 부름: 취소 눌렀으면 그 자리에서 끊음 */
+    fun check() { if (cancelled) throw CancelledByUser() }
 
     fun json(): JSONObject = JSONObject()
-        .put("running", running).put("note", note)
+        .put("running", running).put("note", note).put("busy", busy).put("step", step).put("cancelled", cancelled)
         .put("totalBytes", totalBytes).put("remainCount", remainCount).put("remainBytes", remainBytes)
         .put("items", JSONArray(items.entries.sortedBy { it.key }.map { JSONObject().put("name", it.key).put("pct", it.value) }))
 }
+
+class CancelledByUser : java.io.IOException("취소됨")
 
 /** 최근 변경사항: up(업로드) · delLocal(장치에서 삭제) · down(다운로드) · delCloud(클라우드에서 삭제) */
 object Stats {

@@ -43,20 +43,28 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
             Status.note = "예약 시간 대기"; return Result.success()
         }
         if (!s.receiver && !s.askedDelete) { Status.note = "처음 질문에 답하면 시작"; return Result.success() }
+        Status.cancelled = false
+        Status.busy = true
         return try {
+            Status.stage(0, "로그인 확인 중")
             if (Drive.token(ctx) == null) { Status.note = "로그인 필요"; return Result.success() }
-            Status.note = ""
             // 큰 영상이 10분 넘게 걸려도 안 끊기게. 안드로이드 12+ 백그라운드에서는 거부될 수 있어 실패해도 진행.
             try { setForeground(foregroundInfo()) } catch (_: Exception) {}
             val drive = Drive { Drive.token(ctx) ?: throw IllegalStateException("구글 로그인 필요") }
+            Status.stage(1, "드라이브 접속 중")
             val folder = s.folderId ?: drive.folderId().also { s.folderId = it }
             if (s.receiver) download(ctx, s, drive, folder) else upload(ctx, s, drive, folder)
             Result.success()
+        } catch (e: CancelledByUser) {
+            Status.note = "취소됨"; Result.success()
         } catch (e: Exception) {
             if (e.message?.contains("404") == true) s.folderId = null // 드라이브 폴더가 지워졌으면 다음에 다시 만듦
             log(ctx, "오류: ${e.message}")
             Status.note = "오류, 다시 시도 대기"
             Result.retry()
+        } finally {
+            Status.busy = false
+            Status.step = -1
         }
     }
 
@@ -79,6 +87,7 @@ private fun constraints(s: Settings) = Constraints.Builder()
 
 /** 15분마다(안드로이드 최소 주기). 설정이 바뀌면 다시 불러서 조건 갱신. */
 fun schedule(ctx: Context) {
+    if (!Settings(ctx).auto) { WorkManager.getInstance(ctx).cancelUniqueWork("sync"); return }
     val req = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES).setConstraints(constraints(Settings(ctx))).build()
     WorkManager.getInstance(ctx).enqueueUniquePeriodicWork("sync", ExistingPeriodicWorkPolicy.UPDATE, req)
 }
@@ -92,4 +101,9 @@ fun syncNow(ctx: Context) = thread {
     val req = OneTimeWorkRequestBuilder<SyncWorker>().setConstraints(constraints(Settings(ctx)))
         .setInputData(workDataOf("manual" to true)).build()
     wm.enqueueUniqueWork("now", ExistingWorkPolicy.REPLACE, req)
+}
+
+/** 취소하기: 옮기던 파일은 다음 진행 알림(64KB마다)에서 끊김. 폰 파일은 그대로. */
+fun cancelSync() {
+    if (Status.busy) { Status.cancelled = true; Status.note = "취소하는 중" }
 }

@@ -121,15 +121,17 @@ class MainActivity : ComponentActivity() {
         @JavascriptInterface
         fun state(): String {
             val cm = getSystemService(ConnectivityManager::class.java)
-            val note = Status.note.ifEmpty {
-                when {
-                    !signedIn -> "로그인 필요"
-                    s.wifiOnly && cm.isActiveNetworkMetered -> "와이파이 대기"
-                    else -> ""
-                }
+            val note = when {
+                Status.busy -> Status.note
+                !signedIn -> "로그인 필요"
+                s.wifiOnly && cm.isActiveNetworkMetered -> "와이파이 대기"
+                s.chargingOnly && !getSystemService(android.os.BatteryManager::class.java).isCharging -> "충전 대기"
+                Status.note.isNotEmpty() -> Status.note
+                !s.auto -> "자동 꺼짐 · 버튼으로만"
+                else -> ""
             }
             return JSONObject()
-                .put("receiver", s.receiver).put("signedIn", signedIn)
+                .put("receiver", s.receiver).put("signedIn", signedIn).put("auto", s.auto)
                 .put("wifiOnly", s.wifiOnly).put("chargingOnly", s.chargingOnly)
                 .put("deleteAfter", s.deleteAfter).put("askedDelete", s.askedDelete)
                 .put("concurrency", s.concurrency).put("minFreeGb", s.minFreeGb)
@@ -152,6 +154,7 @@ class MainActivity : ComponentActivity() {
             val on = value == "true"
             when (key) {
                 "receiver" -> { s.receiver = on; reload() }
+                "auto" -> { s.auto = on; Status.note = "" }
                 "wifiOnly" -> s.wifiOnly = on
                 "chargingOnly" -> s.chargingOnly = on
                 "deleteAfter" -> { val first = !s.askedDelete; s.deleteAfter = on; s.askedDelete = true; if (first && !s.receiver) syncNow(this@MainActivity) }
@@ -193,6 +196,7 @@ class MainActivity : ComponentActivity() {
         fun act(name: String, arg: String) = runOnUiThread {
             when (name) {
                 "signIn" -> signIn()
+                "cancel" -> cancelSync()
                 "syncNow" -> { syncNow(this@MainActivity); log(this@MainActivity, "지금 실행 요청") }
                 // DCIM/Camera에서 시작. SD카드는 선택 화면 메뉴에서 고르면 됨.
                 "addFolder" -> addFolder.launch(DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:DCIM/Camera"))

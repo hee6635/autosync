@@ -42,19 +42,23 @@ fun remoteJobs(drive: Drive, folder: String): List<Pair<String, Remote>> =
 suspend fun download(ctx: Context, s: Settings, drive: Drive, folder: String) {
     val dir = cameraDir()
     if (!dir.isDirectory && !dir.mkdirs()) { log(ctx, "DCIM/Camera 폴더를 만들 수 없음(저장소 권한 확인)"); return }
+    Status.stage(2, "드라이브 목록 확인 중")
     val jobs = remoteJobs(drive, folder)
     if (jobs.isEmpty()) { Status.note = "받을 파일 없음"; return }
+    Status.stage(3, "공간 확인 중")
     val minFree = s.minFreeGb * GB
     val taken = mutableSetOf<String>()
     val full = AtomicBoolean(false)
     val got = AtomicInteger(0)
     Status.start(jobs.size, jobs.sumOf { it.second.size })
+    Status.stage(4, "")
     val gate = Semaphore(s.concurrency)
     try {
         coroutineScope {
             for ((sub, r) in jobs) launch {
                 gate.withPermit {
                     val label = if (sub.isEmpty()) r.name else "$sub / ${r.name}"
+                    if (Status.cancelled) return@withPermit
                     try {
                         if (full.get() || StatFs(dir.path).availableBytes - r.size < minFree) {
                             if (!full.getAndSet(true)) log(ctx, "여유 공간 ${s.minFreeGb}GB 미만, 받기 중지")
@@ -72,7 +76,7 @@ suspend fun download(ctx: Context, s: Settings, drive: Drive, folder: String) {
                         try {
                             val md = MessageDigest.getInstance("MD5")
                             DigestOutputStream(tmp.outputStream(), md).use { out ->
-                                drive.download(r.id, out) { n -> Status.items[label] = if (r.size > 0) (n * 100 / r.size).toInt() else 0 }
+                                drive.download(r.id, out) { n -> Status.check(); Status.items[label] = if (r.size > 0) (n * 100 / r.size).toInt() else 0 }
                             }
                             if (hex(md.digest()) != r.md5) { log(ctx, "MD5 불일치, 드라이브에 보관: ${r.name}"); return@withPermit }
                             if (r.modified > 0) tmp.setLastModified(r.modified) // 영상은 구글포토가 수정 시각으로 날짜를 잡음
@@ -87,7 +91,7 @@ suspend fun download(ctx: Context, s: Settings, drive: Drive, folder: String) {
                         Stats.add(ctx, "delCloud", r.name, r.size)
                         got.incrementAndGet()
                     } catch (e: Exception) {
-                        log(ctx, "실패 $label: ${e.message}")
+                        if (e !is CancelledByUser) log(ctx, "실패 $label: ${e.message}")
                     } finally {
                         Status.items.remove(label)
                         Status.done(r.size)
@@ -98,5 +102,6 @@ suspend fun download(ctx: Context, s: Settings, drive: Drive, folder: String) {
     } finally {
         Status.stop()
     }
-    log(ctx, "받기 ${got.get()}/${jobs.size}개")
+    Status.note = if (Status.cancelled) "취소됨" else "완료 · ${got.get()}개 받음"
+    log(ctx, (if (Status.cancelled) "취소됨, " else "") + "받기 ${got.get()}/${jobs.size}개")
 }

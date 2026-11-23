@@ -115,12 +115,61 @@ function renderHome() {
   setText($('#ringSmall'), small);
   $('#ring').setAttribute('aria-label', big ? `${big} ${small}` : small);
 
-  const chip = st.note || (st.running ? (S.receiver ? '받는 중' : '보내는 중') : '');
-  $('#chip').classList.toggle('hide', !chip);
-  if (chip) setText($('#chipText'), chip);
+  // 단계 점 · 파일 막대 · 칩 · 버튼
+  const prep = st.busy && st.step < 4, moving = st.busy && st.step === 4;
+  $('#stepsBox').classList.toggle('open', prep && st.step >= 0);
+  if (prep) drawSteps(st.step);
+  $('#filesBox').classList.toggle('open', moving && st.items.length > 0);
+  if (moving) drawFiles(st.items);
 
-  const btn = !S.signedIn ? '구글 로그인' : S.receiver ? '지금 받기' : '지금 보내기';
-  setText($('#mainBtn'), btn);
+  const pressed = Date.now() - pressedAt < 4000 && !st.busy && !st.note.includes('대기');
+  let chip = st.note, spin = prep || st.cancelled || pressed, ic = 'cloud';
+  if (pressed) chip = '시작 중';
+  else if (moving && !st.cancelled) { chip = (S.receiver ? '받는 중' : '보내는 중') + (st.items.length > 1 ? ` · ${st.items.length}개 동시` : ''); ic = S.receiver ? 'down' : 'up'; }
+  else if (chip.startsWith('완료')) ic = 'check';
+  else if (chip === '취소됨') ic = 'stop';
+  else if (chip.startsWith('자동 꺼짐')) ic = 'clock';
+  $('#chip').classList.toggle('hide', !chip);
+  if (chip) {
+    setText($('#chipText'), chip);
+    const want = spin ? 'spin' : ic, c = $('#chipIc');
+    if (c._ic !== want) { c._ic = want; c.innerHTML = `<use href="#i-${want}"/>`; c.classList.toggle('spin', spin); }
+  }
+
+  let btn, cls = 'primary bottom', bic = '';
+  if (!S.signedIn) btn = '구글 로그인';
+  else if (st.cancelled && st.busy) { btn = '취소하는 중'; cls += ' soft'; bic = 'spin'; }
+  else if (moving) { btn = '취소하기'; cls += ' stop'; bic = 'stop'; }
+  else if (prep || pressed) { btn = '시작 중'; cls += ' soft'; bic = 'spin'; }
+  else btn = S.receiver ? '지금 받기' : '지금 보내기';
+  const mb = $('#mainBtn'), key = cls + btn;
+  if (mb._key !== key) {
+    mb._key = key; mb.className = cls;
+    mb.innerHTML = (bic ? `<svg class="${bic === 'spin' ? 'spin' : ''}"><use href="#i-${bic}"/></svg>` : '') + `<span>${btn}</span>`;
+  }
+  mb.dataset.state = !S.signedIn ? 'login' : moving && !st.cancelled ? 'cancel' : (st.busy || pressed) ? 'wait' : 'go';
+}
+let pressedAt = 0;
+const STEPS = () => S.receiver ? ['로그인', '접속', '목록', '공간', '받기'] : ['로그인', '접속', '폴더', '용량', '보내기'];
+function drawSteps(n) {
+  const box = $('#steps'), names = STEPS().join();
+  if (box._names !== names) {
+    box._names = names;
+    box.innerHTML = STEPS().map((t, i) => `<div class="st"><span class="dot"><i></i><svg><use href="#i-check"/></svg></span>${i < 4 ? '<span class="ln"><b></b></span>' : ''}<span>${t}</span></div>`).join('');
+  }
+  box.querySelectorAll('.st').forEach((e, i) => { e.classList.toggle('done', i < n); e.classList.toggle('cur', i === n); });
+}
+function drawFiles(items) {
+  const box = $('#files'), names = items.slice(0, 3).map((x) => x.name);
+  if (box._names !== names.join('|')) {
+    box._names = names.join('|');
+    box.innerHTML = names.map((n) => `<div class="f">${icon(/\.(mp4|mov|3gp|m4v|mkv|webm|avi|mpe?g|wmv)$/i.test(n) ? 'play' : 'image')}<div class="w"><div class="t"><span>${esc(n)}</span><b>0%</b></div><div class="bar"><i></i></div></div></div>`).join('');
+  }
+  box.querySelectorAll('.f').forEach((f, i) => {
+    const p = items[i].pct;
+    setText(f.querySelector('b'), p + '%');
+    f.querySelector('.bar i').style.transform = `scaleX(${p / 100})`;
+  });
 }
 function render() {
   const first = mode === null;
@@ -193,6 +242,7 @@ function fillSettings() {
   setText($('#vUp'), win(S.up));
   setText($('#vDown'), win(S.down));
   setText($('#vAccount'), S.signedIn ? '연결됨' : '로그인');
+  setText($('#autoLabel'), S.receiver ? '자동 받기' : '자동 보내기');
 }
 
 /* ---------- 예약 · 고르기 창 ---------- */
@@ -238,6 +288,7 @@ document.addEventListener('click', (e) => {
     const sw = t.querySelector('.sw');
     sw.classList.remove('drop'); sw.offsetWidth; sw.classList.add('drop');
     A.set(d.sw, String(on)); S[d.sw] = on;
+    if (d.sw === 'auto') setTimeout(refresh, 50);
     return;
   }
   if (d.uri) return openSub(d.uri);
@@ -247,7 +298,15 @@ document.addEventListener('click', (e) => {
   if (d.v) { select($('#pickPills'), t); A.set(pickKey, d.v); S[pickKey] = Number(d.v); fillSettings(); setTimeout(closeTop, 250); return; }
   if (d.ask) { A.set('deleteAfter', d.ask); S.askedDelete = true; closeTop(); refresh(); return; }
   switch (t.id) {
-    case 'mainBtn': A.act(S.signedIn ? 'syncNow' : 'signIn', ''); break;
+    case 'mainBtn': {
+      const st = t.dataset.state;
+      if (st === 'login') A.act('signIn', '');
+      else if (st === 'cancel') { setText($('#cancelTitle'), S.receiver ? '받기를 취소할까요?' : '보내기를 취소할까요?'); openLayer($('#cancelDialog')); }
+      else if (st === 'go') { pressedAt = Date.now(); A.act('syncNow', ''); renderHome(); }
+      break;
+    }
+    case 'keepGoing': closeTop(); break;
+    case 'doCancel': A.act('cancel', ''); closeTop(); setTimeout(refresh, 50); break;
     case 'saveSub': {
       const n = $('#newName').value.trim() || subPick;
       if (n) A.setSub(subFor, n);

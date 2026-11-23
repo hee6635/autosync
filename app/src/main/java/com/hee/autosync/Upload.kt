@@ -71,7 +71,7 @@ fun listDocs(ctx: Context, uri: Uri): List<Doc> {
 class Job(val doc: Doc, val sub: String, val root: String)
 
 /** 지금 보낼 것 목록(오래된 것부터). 화면의 "N개 · X GB 대기"에도 씀. */
-fun pendingJobs(ctx: Context, s: Settings, skipped: MutableMap<String, Int> = mutableMapOf()): List<Job> {
+fun pendingJobs(ctx: Context, s: Settings, skipped: MutableMap<String, Int> = mutableMapOf(), found: (Int) -> Unit = {}): List<Job> {
     val fresh = System.currentTimeMillis() - 60_000 // 방금 찍어서 아직 쓰는 중일 수 있는 파일은 다음에
     val pending = s.pending
     val uploaded = s.uploaded
@@ -86,7 +86,9 @@ fun pendingJobs(ctx: Context, s: Settings, skipped: MutableMap<String, Int> = mu
             if (root !in pending && d.modified > fresh) continue
             if (key(d) in uploaded) continue
             jobs += Job(d, s.sub(root), root)
+            if (jobs.size % 50 == 0) found(jobs.size)
         }
+        found(jobs.size)
     }
     return jobs.distinctBy { it.doc.uri }.sortedBy { it.doc.modified }
 }
@@ -99,10 +101,12 @@ private const val QUOTA_MARGIN = 200L * 1024 * 1024
 suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String) {
     val cr = ctx.contentResolver
     val skipped = mutableMapOf<String, Int>()
-    val jobs = pendingJobs(ctx, s, skipped)
+    Status.stage(2, "폴더 확인 중")
+    val jobs = pendingJobs(ctx, s, skipped) { n -> Status.note = "폴더 확인 중 · ${"%,d".format(n)}개 찾음" }
     val pending = s.pending
     if (jobs.isEmpty()) { clearPending(ctx, s, pending, emptySet()); Status.note = "보낼 파일 없음"; return }
 
+    Status.stage(3, "용량 확인 중")
     val (limit, usage) = drive.quota()
     val free = AtomicLong(if (limit == null) Long.MAX_VALUE else limit - usage)
     val subIds = ConcurrentHashMap<String, String>()
@@ -113,12 +117,14 @@ suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String) {
     val lock = Any()
 
     Status.start(jobs.size, jobs.sumOf { it.doc.size })
+    Status.stage(4, "")
     val gate = Semaphore(s.concurrency)
     try {
         coroutineScope {
             for (j in jobs) launch {
                 gate.withPermit {
                     val d = j.doc
+                    if (Status.cancelled) { failedRoots += j.root; return@withPermit }
                     if (full.get() || free.get() - d.size < QUOTA_MARGIN) {
                         if (!full.getAndSet(true)) log(ctx, "구글 계정 용량 부족, 업로드 멈춤")
                         failedRoots += j.root; return@withPermit
@@ -129,7 +135,7 @@ suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String) {
                         val md = MessageDigest.getInstance("MD5")
                         val input = cr.openInputStream(d.uri) ?: throw java.io.IOException("파일을 열 수 없음")
                         val r = drive.upload(sub, d.name, d.size, d.modified, d.mime.ifEmpty { "application/octet-stream" },
-                            DigestInputStream(input, md)) { n -> Status.items[d.name] = (n * 100 / d.size).toInt() }
+                            DigestInputStream(input, md)) { n -> Status.check(); Status.items[d.name] = (n * 100 / d.size).toInt() }
                         if (r.md5 != hex(md.digest())) {
                             drive.delete(r.id)
                             throw java.io.IOException("MD5 불일치, 폰 파일 보관")
@@ -144,7 +150,7 @@ suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String) {
                         } else synchronized(lock) { s.uploaded = s.uploaded + key(d) }
                     } catch (e: Exception) {
                         failedRoots += j.root
-                        log(ctx, "실패 ${d.name}: ${e.message}")
+                        if (e !is CancelledByUser) log(ctx, "실패 ${d.name}: ${e.message}")
                     } finally {
                         Status.items.remove(d.name)
                         Status.done(d.size)
@@ -156,7 +162,8 @@ suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String) {
         Status.stop()
     }
     clearPending(ctx, s, pending, failedRoots)
-    log(ctx, "보내기 ${sent.get()}/${jobs.size}개" + if (skipped.isEmpty()) "" else ", 건너뜀 " + skipped.entries.joinToString { "${it.key} ${it.value}" })
+    Status.note = if (Status.cancelled) "취소됨" else "완료 · ${sent.get()}개 보냄"
+    log(ctx, (if (Status.cancelled) "취소됨, " else "") + "보내기 ${sent.get()}/${jobs.size}개" + if (skipped.isEmpty()) "" else ", 건너뜀 " + skipped.entries.joinToString { "${it.key} ${it.value}" })
 }
 
 /** 수동으로 고른 것 중 다 보낸 것만 목록에서 빼고 권한 반납 */

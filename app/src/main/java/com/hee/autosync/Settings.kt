@@ -17,6 +17,8 @@ class Settings(ctx: Context) {
     private fun setInt(k: String, v: Int) = p.edit().putInt(k, v).apply()
 
     var receiver: Boolean get() = bool("receiver", false); set(v) = setBool("receiver", v)
+    /** 15분마다 자동 실행. 끄면 버튼으로만. */
+    var auto: Boolean get() = bool("auto", true); set(v) = setBool("auto", v)
     var wifiOnly: Boolean get() = bool("wifiOnly", true); set(v) = setBool("wifiOnly", v)
     var chargingOnly: Boolean get() = bool("chargingOnly", false); set(v) = setBool("chargingOnly", v)
     /** 처음 시작 질문에서 정함. 답하기 전엔 보내지 않음. */
