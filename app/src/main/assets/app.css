@@ -215,3 +215,10 @@ h2 { margin: 18px 0 8px 6px; }
 /* 보라 (v0.6) · 직접 전송은 초록 */
 .chip.wifi { color: #0F8A5F; }
 .row.on .sw { background: var(--acc2); }
+
+/* 직접 전송 상태 줄 (v0.8) */
+.chip.link { color: #0F8A5F; margin-top: -6px; }
+.chip.link.off { color: var(--sub); font-weight: 500; }
+#driveUp { width: 36px; height: 36px; margin-left: -8px; }
+#driveOpts { max-height: 45vh; overflow-y: auto; }
+#driveOpts .empty { color: var(--sub); padding: 12px 4px; font-size: 15px; }

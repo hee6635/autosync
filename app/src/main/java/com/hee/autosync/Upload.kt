@@ -122,7 +122,7 @@ suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String, manu
     val lock = Any()
 
     // 같은 와이파이에 받는 폰이 있으면 묻지 않고 직접, 없으면 클라우드
-    val peer = if (Direct.onWifi(ctx)) try { Direct.discover(ctx) } catch (e: Exception) { null } else null
+    val peer = if (s.directSend && Direct.onWifi(ctx)) try { Direct.discover(ctx) } catch (e: Exception) { null } else null
     val dkey = peer?.let { try { Direct.key(s, drive, folder) } catch (e: Exception) { null } }
     val direct = AtomicBoolean(peer != null && dkey != null)
     val batch = JSONObject().put("id", UUID.randomUUID().toString()).put("count", jobs.size).put("bytes", jobs.sumOf { it.doc.size })

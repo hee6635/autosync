@@ -85,6 +85,20 @@ class MainActivity : ComponentActivity() {
         addPending(uris)
     }
 
+    // 보내는 폰 화면: 같은 와이파이에 받는 폰이 보이는지 (화면이 열려 있을 때 30초마다)
+    @Volatile private var probed = false
+    @Volatile private var probePeer = ""
+    @Volatile private var probing = false
+    private fun probe() {
+        if (probing || s.receiver || !s.directSend) return
+        probing = true
+        thread {
+            probePeer = try { if (Direct.onWifi(this)) Direct.discover(this)?.name ?: "" else "" } catch (e: Exception) { "" }
+            probed = true; probing = false
+            emit("reload", "true")
+        }
+    }
+
     private fun confirmDelete() {
         if (Build.VERSION.SDK_INT < 30 || s.toDelete.isEmpty()) return
         val uris = s.toDelete.map { Uri.parse(it.substringBefore('\t')) }
@@ -139,8 +153,8 @@ class MainActivity : ComponentActivity() {
             quota = JSONObject().put("limit", limit ?: -1).put("usage", usage)
             waiting = if (s.receiver) {
                 val folder = s.folderId ?: drive.folderId().also { s.folderId = it }
-                val r = remoteJobs(drive, folder)
-                JSONObject().put("n", r.size).put("b", r.sumOf { it.second.size })
+                val r = remoteJobs(drive, folder, s)
+                JSONObject().put("n", r.size).put("b", r.sumOf { it.r.size })
             } else {
                 val j = pendingJobs(this, s, manual = true)
                 JSONObject().put("n", j.size).put("b", j.sumOf { it.doc.size })
@@ -178,7 +192,9 @@ class MainActivity : ComponentActivity() {
             }
             return JSONObject()
                 .put("receiver", s.receiver).put("signedIn", signedIn).put("auto", s.auto)
-                .put("direct", s.direct).put("lastPeer", s.lastPeer).put("toDelete", s.toDelete.size)
+                .put("direct", s.direct).put("lastPeer", s.lastPeer).put("directSend", s.directSend)
+                .put("probe", JSONObject().put("checked", probed).put("peer", probePeer))
+                .put("recvFolders", JSONArray(s.recvFolders.map { JSONObject().put("id", it.id).put("name", it.name).put("del", it.del) })).put("toDelete", s.toDelete.size)
                 .put("batteryOk", getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(packageName))
                 .put("askedBattery", getSharedPreferences("settings", MODE_PRIVATE).getBoolean("askedBattery", false))
                 .put("wifiOnly", s.wifiOnly).put("chargingOnly", s.chargingOnly)
@@ -204,6 +220,7 @@ class MainActivity : ComponentActivity() {
             when (key) {
                 "receiver" -> { s.receiver = on; DirectService.sync(this@MainActivity); reload() }
                 "direct" -> { s.direct = on; DirectService.sync(this@MainActivity) }
+                "directSend" -> { s.directSend = on; probed = false; probePeer = "" }
                 "auto" -> { s.auto = on; Status.note = "" }
                 "wifiOnly" -> s.wifiOnly = on
                 "chargingOnly" -> s.chargingOnly = on
@@ -222,6 +239,30 @@ class MainActivity : ComponentActivity() {
             val n = name.replace('/', '_').trim()
             if (n.isNotEmpty()) s.setSub(uri, n)
         }
+
+        /** 드라이브 폴더 고르기: parent 아래 폴더들 → app.on('dfolders', {parent, items}) */
+        @JavascriptInterface
+        fun driveList(parent: String) {
+            thread {
+                val items = try {
+                    Drive { Drive.token(this@MainActivity)!! }.subfolders(parent).sortedBy { it.second.lowercase() }
+                        .map { JSONObject().put("id", it.first).put("name", it.second) }
+                } catch (e: Exception) { log(this@MainActivity, "드라이브 폴더 목록 실패: ${e.message}"); emptyList() }
+                emit("dfolders", JSONObject().put("parent", parent).put("items", JSONArray(items)).toString())
+            }
+        }
+
+        @JavascriptInterface
+        fun addRecvFolder(id: String, name: String, del: Boolean) {
+            s.recvFolders = s.recvFolders.filter { it.id != id } + RecvFolder(id, name, del)
+            reload()
+        }
+
+        @JavascriptInterface
+        fun setRecvDel(id: String, del: Boolean) { s.recvFolders = s.recvFolders.map { if (it.id == id) RecvFolder(it.id, it.name, del) else it } }
+
+        @JavascriptInterface
+        fun removeRecvFolder(id: String) { s.recvFolders = s.recvFolders.filter { it.id != id }; reload() }
 
         @JavascriptInterface
         fun recent(type: String, today: Boolean): String = Stats.list(this@MainActivity, type, today).toString()
@@ -247,6 +288,7 @@ class MainActivity : ComponentActivity() {
             when (name) {
                 "signIn" -> signIn()
                 "cancel" -> cancelSync()
+                "probe" -> probe()
                 "battery" -> askBattery()
                 "batteryOnce" -> {
                     val p = getSharedPreferences("settings", MODE_PRIVATE)

@@ -2,6 +2,7 @@ package com.hee.autosync
 
 import android.content.Context
 import android.os.Build
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -56,6 +57,18 @@ class Settings(ctx: Context) {
     var toDelete: Set<String>
         get() = p.getStringSet("toDelete", emptySet())!!.toSet()
         set(v) = p.edit().putStringSet("toDelete", v).apply()
+    /** 보내는 폰: 같은 와이파이에 받는 폰이 있으면 바로 보내기 */
+    var directSend: Boolean get() = bool("directSend", true); set(v) = setBool("directSend", v)
+    /** 받는 폰: 추가로 받을 드라이브 폴더 */
+    var recvFolders: List<RecvFolder>
+        get() = JSONArray(p.getString("recvFolders", "[]")).let { a ->
+            (0 until a.length()).map { a.getJSONObject(it).let { o -> RecvFolder(o.getString("id"), o.getString("name"), o.getBoolean("del")) } }
+        }
+        set(v) = p.edit().putString("recvFolders", JSONArray(v.map { JSONObject().put("id", it.id).put("name", it.name).put("del", it.del) }).toString()).apply()
+    // shortcut: "남기기" 폴더에서 받은 파일 id가 계속 쌓임, 수만 개가 되면 DB로 바꿀 것
+    var seen: Set<String>
+        get() = p.getStringSet("seen", emptySet())!!.toSet()
+        set(v) = p.edit().putStringSet("seen", v).apply()
     var folderId: String?
         get() = p.getString("folderId", null)
         set(v) = p.edit().putString("folderId", v).apply()
@@ -71,6 +84,8 @@ class Settings(ctx: Context) {
     fun inUploadWindow(now: Int) = inWindow(now, upStart, upEnd)
     fun inDownloadWindow(now: Int) = inWindow(now, downStart, downEnd)
 }
+
+class RecvFolder(val id: String, val name: String, val del: Boolean)
 
 /** 예약 시간대 안인가. 자정을 넘는 시간대(22:00~06:00)도 됨. */
 fun inWindow(now: Int, start: Int, end: Int): Boolean = when {

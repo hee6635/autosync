@@ -29,6 +29,7 @@
         </div>
       </div>
       <div class="chip" id="chip"><svg id="chipIc"><use href="#i-cloud"/></svg><span id="chipText"></span></div>
+      <div class="chip link hide" id="link"><svg><use href="#i-wifi"/></svg><span id="linkText"></span></div>
       <div class="collapse" id="stepsBox"><div><div class="steps" id="steps"></div></div></div>
       <div class="collapse" id="filesBox"><div><div class="files" id="files"></div></div></div>
       <button class="primary" id="mainBtn"></button>
@@ -57,6 +58,12 @@
   </div>
 </section>
 
+<section class="screen page" id="recvFolders">
+  <header class="top"><button class="icon back" aria-label="뒤로"><svg><use href="#i-back"/></svg></button><h1>받을 폴더</h1></header>
+  <div class="rows card list" id="recvList"></div>
+  <button class="add" id="addDrive"><svg><use href="#i-plus"/></svg>드라이브 폴더 추가</button>
+</section>
+
 <section class="screen page" id="settings">
   <header class="top"><button class="icon back" aria-label="뒤로"><svg><use href="#i-back"/></svg></button><h1>설정</h1></header>
   <div class="rows card list">
@@ -67,6 +74,7 @@
   </div>
   <h2>보내는 폰</h2>
   <div class="rows card list">
+    <button class="row" data-sw="directSend"><svg class="ic"><use href="#i-wifi"/></svg><span class="label">와이파이로 바로 보내기</span><span class="sw"><span class="k"></span></span></button>
     <button class="row" data-sw="deleteAfter"><svg class="ic"><use href="#i-trash"/></svg><span class="label">보낸 후 삭제</span><span class="sw"><span class="k"></span></span></button>
     <button class="row last" data-time="up"><svg class="ic"><use href="#i-clock"/></svg><span class="label">예약 업로드</span><span class="val" id="vUp"></span><svg class="chev"><use href="#i-chev"/></svg></button>
   </div>
@@ -100,6 +108,20 @@
   <div class="btns"><button class="secondary" id="removeFolder">빼기</button><button class="primary" id="saveSub">저장</button></div>
 </section>
 
+<section class="sheet" id="driveSheet" aria-label="드라이브 폴더 고르기">
+  <span class="grip"></span>
+  <div class="sheetTitle"><button class="icon" id="driveUp" aria-label="위 폴더"><svg><use href="#i-back"/></svg></button><b id="drivePath">내 드라이브</b></div>
+  <div class="opts" id="driveOpts"></div>
+  <div class="btns"><button class="primary" id="drivePick">이 폴더 받기</button></div>
+</section>
+
+<section class="sheet" id="recvSheet" aria-label="받을 폴더">
+  <span class="grip"></span>
+  <div class="sheetTitle"><svg><use href="#i-folder"/></svg><b id="recvName"></b></div>
+  <div class="pills big" id="recvPills"><button data-rdel="false">받아도 남기기</button><button data-rdel="true">받으면 지우기</button><span class="plate"></span></div>
+  <div class="btns"><button class="secondary" id="recvRemove">빼기</button></div>
+</section>
+
 <section class="sheet" id="timeSheet" aria-label="예약">
   <span class="grip"></span>
   <div class="sheetTitle"><svg><use href="#i-clock"/></svg><b id="timeTitle"></b></div>
@@ -120,6 +142,13 @@
   <span class="dIcon red"><svg><use href="#i-stop"/></svg></span>
   <b id="cancelTitle">보내기를 취소할까요?</b>
   <div class="btns"><button class="secondary" id="keepGoing">계속</button><button class="primary danger" id="doCancel">취소하기</button></div>
+</section>
+
+<section class="dialog" id="recvAsk" role="dialog" aria-label="드라이브에서 지울지">
+  <span class="dIcon"><svg><use href="#i-cloud"/></svg></span>
+  <b>받은 뒤 드라이브에서<br>지울까요?</b>
+  <span class="tip" id="recvAskName"></span>
+  <div class="btns"><button class="secondary" data-radd="false">남기기</button><button class="primary" data-radd="true">지우기</button></div>
 </section>
 
 <section class="dialog" id="askDialog" role="dialog" aria-label="처음 시작 질문">

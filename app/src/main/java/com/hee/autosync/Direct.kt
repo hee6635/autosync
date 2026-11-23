@@ -192,12 +192,16 @@ class DirectService : Service() {
         return START_STICKY
     }
 
-    private fun notification(): Notification {
+    private fun notification(text: String = "직접 받기 대기 중"): Notification {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel("direct", "직접 받기", NotificationManager.IMPORTANCE_MIN))
         return NotificationCompat.Builder(this, "direct").setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("직접 받기 대기 중").setOngoing(true).build()
+            .setContentTitle(text).setOngoing(true).setOnlyAlertOnce(true).build()
     }
+
+    @Volatile private var from = ""
+    @Volatile private var count = 0
+    private fun showNote(text: String) = getSystemService(NotificationManager::class.java).notify(2, notification(text))
 
     private fun start() {
         val s = Settings(this)
@@ -232,6 +236,7 @@ class DirectService : Service() {
                 MediaScannerConnection.scanFile(this, arrayOf(f.path), null, null)
                 Stats.add(this, "down", f.name, f.length())
                 got++
+                showNote("${from}에서 받는 중 · $got/$count")
             }
         } catch (e: Exception) {
             log(this, "직접 받기 실패 $label: ${e.message}")
@@ -246,6 +251,8 @@ class DirectService : Service() {
         val b = h.optJSONObject("batch")
         if (b != null && b.optString("id") != batch) {
             batch = b.optString("id"); got = 0
+            from = h.optString("from"); count = b.optInt("count")
+            showNote("${from}에서 받는 중 · 0/$count")
             Status.start(b.optInt("count"), b.optLong("bytes"))
             Status.busy = true; Status.step = 4; Status.note = ""
             Status.route = "direct:" + h.optString("from")
@@ -263,6 +270,7 @@ class DirectService : Service() {
                 batch = ""
                 Status.stop(); Status.busy = false; Status.step = -1; Status.route = ""
                 Status.note = "완료 · ${got}개 받음"
+                showNote("직접 받기 대기 중")
             }
         }
     }

@@ -44,6 +44,7 @@ function openPage(id) {
   if (id === 'recent') fillRecent();
   if (id === 'folders') fillFolders();
   if (id === 'settings') fillSettings();
+  if (id === 'recvFolders') fillRecv();
   if (id === 'log') setText($('#logText'), A.logText() || '기록 없음');
   el.scrollTop = 0;
   el.classList.add('on');
@@ -79,6 +80,7 @@ function homeRows() {
   const r = S.receiver ? [
     { icon: 'cloud', label: '구글 계정', val: qv },
     { icon: 'hdd', label: '폰 남은 공간', val: size(S.phoneFree) },
+    { icon: 'folder', label: '받을 폴더', val: S.recvFolders.length ? `PixelSync 외 ${S.recvFolders.length}개` : 'PixelSync', go: 'recvFolders' },
     { icon: 'clock', label: '예약', val: win(S.down), time: 'down' },
   ] : [
     { icon: 'cloud', label: '구글 계정', val: qv },
@@ -141,13 +143,24 @@ function renderHome() {
     if (peer) { chip = (S.receiver ? `${peer}에서 직접` : `${peer}로 직접`) + speedText; ic = 'wifi'; wifi = true; }
     else { chip = (S.receiver ? '받는 중' : '클라우드로') + speedText; ic = S.receiver ? 'down' : 'cloud'; }
   }
-  else if (!st.busy && S.receiver && st.listening && !chip) { chip = '직접 받기 대기 중'; ic = 'wifi'; wifi = true; }
   else if (chip.startsWith('완료')) ic = 'check';
   else if (chip === '취소됨') ic = 'stop';
   else if (chip.startsWith('자동 꺼짐')) ic = 'clock';
   $('#chip').classList.toggle('hide', !chip);
   $('#chip').classList.toggle('muted', !spin && (ic === 'check' || ic === 'clock'));
   $('#chip').classList.toggle('wifi', wifi);
+
+  // 직접 전송 상태 한 줄 (옮기는 중엔 위 줄에 길이 나오니 숨김)
+  let link = '', on = false;
+  if (!moving) {
+    if (S.receiver) { link = !S.direct ? '직접 받기 꺼짐' : st.listening ? '직접 받기 대기 중' : '직접 받기 준비 중'; on = S.direct && st.listening; }
+    else if (!S.directSend) link = '바로 보내기 꺼짐';
+    else if (S.probe.peer) { link = `${S.probe.peer}로 바로 보내기 가능`; on = true; }
+    else if (S.probe.checked) link = '받는 폰 안 보임 · 클라우드로 보냄';
+  }
+  $('#link').classList.toggle('hide', !link);
+  $('#link').classList.toggle('off', !on);
+  if (link) setText($('#linkText'), link);
   if (ic === 'check' && chip.startsWith('완료')) chip = '최근 ' + chip.replace(/^완료 · /, '');
   if (chip) {
     setText($('#chipText'), chip);
@@ -321,6 +334,23 @@ function openPick(key) {
   requestAnimationFrame(() => slidePlate(p));
 }
 
+/* ---------- 받을 폴더 · 드라이브 폴더 고르기 ---------- */
+let recvSel = null, drivePath = [{ id: 'root', name: '내 드라이브' }], drivePickFolder = null;
+function fillRecv() {
+  $('#recvList').innerHTML = `<div class="row">${icon('folder')}<span class="label">PixelSync (기본)</span><span class="val">받으면 지움</span></div>` +
+    S.recvFolders.map((f) => `<button class="row" data-rf="${esc(f.id)}">${icon('folder')}<span class="label">${esc(f.name)}</span><span class="val">${f.del ? '받으면 지움' : '남김'}</span>${icon('chev', 'chev')}</button>`).join('');
+}
+function openDrive() { drivePath = [{ id: 'root', name: '내 드라이브' }]; loadDrive(); openLayer($('#driveSheet')); }
+function loadDrive() {
+  const cur = drivePath[drivePath.length - 1];
+  setText($('#drivePath'), drivePath.map((p) => p.name).join(' / '));
+  $('#driveUp').style.visibility = drivePath.length > 1 ? 'visible' : 'hidden';
+  $('#drivePick').disabled = cur.id === 'root';
+  $('#drivePick').style.opacity = cur.id === 'root' ? .4 : 1;
+  $('#driveOpts').innerHTML = '<div class="empty">불러오는 중…</div>';
+  A.driveList(cur.id);
+}
+
 /* ---------- 누르기 ---------- */
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button');
@@ -346,6 +376,16 @@ document.addEventListener('click', (e) => {
     return;
   }
   if (d.uri) return openSub(d.uri);
+  if (d.df) { drivePath.push({ id: d.df, name: t.textContent.trim() }); return loadDrive(); }
+  if (d.rf) {
+    recvSel = S.recvFolders.find((f) => f.id === d.rf);
+    setText($('#recvName'), recvSel.name);
+    $$('#recvPills button').forEach((b) => b.classList.toggle('sel', b.dataset.rdel === String(recvSel.del)));
+    openLayer($('#recvSheet')); requestAnimationFrame(() => slidePlate($('#recvPills')));
+    return;
+  }
+  if (d.rdel) { select($('#recvPills'), t); recvSel.del = d.rdel === 'true'; A.setRecvDel(recvSel.id, recvSel.del); fillRecv(); setTimeout(closeTop, 250); return; }
+  if (d.radd) { A.addRecvFolder(drivePickFolder.id, drivePickFolder.name, d.radd === 'true'); closeTop(); closeTop(); setTimeout(() => { refresh(); fillRecv(); }, 100); return; }
   if (d.sub) { subPick = d.sub; $$('#subOpts .opt').forEach((o) => o.classList.toggle('sel', o === t)); $('#newName').value = ''; return; }
   if (d.t) { recentTab = Number(d.t); fillRecent(); slideBar($('#recentTabs')); return; }
   if (d.r) { recentRange = d.r; fillRecent(); slidePlate($('#rangePills')); return; }
@@ -368,6 +408,15 @@ document.addEventListener('click', (e) => {
     }
     case 'removeFolder': A.act('removeFolder', subFor); closeTop(); setTimeout(() => { refresh(); fillFolders(); }, 150); break;
     case 'timeSave': A.set(timeKey, toMin($('#tStart').value) + ',' + toMin($('#tEnd').value)); closeTop(); refresh(); fillSettings(); break;
+    case 'addDrive': openDrive(); break;
+    case 'driveUp': if (drivePath.length > 1) { drivePath.pop(); loadDrive(); } break;
+    case 'drivePick': {
+      const cur = drivePath[drivePath.length - 1];
+      if (cur.id === 'root') break;
+      drivePickFolder = cur; setText($('#recvAskName'), cur.name);
+      openLayer($('#recvAsk')); break;
+    }
+    case 'recvRemove': A.removeRecvFolder(recvSel.id); closeTop(); setTimeout(() => { refresh(); fillRecv(); }, 100); break;
     case 'timeOff': A.set(timeKey, '-1,-1'); closeTop(); refresh(); fillSettings(); break;
   }
 });
@@ -382,10 +431,20 @@ window.app = {
   },
   on: (ev, data) => {
     if (ev === 'reload') { refresh(); if ($('#folders').classList.contains('on')) fillFolders(); }
+    if (ev === 'dfolders') {
+      const cur = drivePath[drivePath.length - 1];
+      if (data.parent !== cur.id) return;
+      $('#driveOpts').innerHTML = data.items.length ? data.items.map((f) => `<button class="opt" data-df="${esc(f.id)}">${icon('folder')}<span>${esc(f.name)}</span>${icon('chev', 'ck')}</button>`).join('')
+        : '<div class="empty">하위 폴더 없음</div>';
+    }
     if (ev === 'subs' && subFor) drawOpts([subPick, S.defaultSub, ...S.folders.map((f) => f.sub), ...data]);
   },
 };
 
 refresh();
 setInterval(refresh, 800); // 진행률 갱신 (메모리 값만 읽어서 가벼움)
+// 보내는 폰: 화면이 열려 있을 때만 30초마다 받는 폰 찾기
+const probe = () => { if (S && !S.receiver && S.directSend && document.visibilityState === 'visible') A.act('probe', ''); };
+setTimeout(probe, 500); setInterval(probe, 30000);
+document.addEventListener('visibilitychange', probe);
 window.addEventListener('resize', () => $$('.tabs,.pills').forEach((g) => g.classList.contains('tabs') ? slideBar(g) : slidePlate(g)));
