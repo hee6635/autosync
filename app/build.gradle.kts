@@ -44,4 +44,5 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("com.google.android.gms:play-services-auth:21.3.0")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303") // 단위 시험에서 진짜 JSON (안드로이드 것은 빈 껍데기)
 }

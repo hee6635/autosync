@@ -133,14 +133,21 @@ function renderHome() {
   if (moving) drawFiles(st.items);
 
   const pressed = Date.now() - pressedAt < 4000 && !st.busy && !st.note.includes('대기');
-  let chip = st.note, spin = prep || st.cancelled || pressed, ic = 'cloud';
-  if (pressed) chip = '시작 중';
-  else if (moving && !st.cancelled) { chip = (S.receiver ? '받는 중' : '보내는 중') + (sp > 0 ? ` · ${(sp / MB).toFixed(1)}MB/s` : ''); ic = S.receiver ? 'down' : 'up'; }
+  let chip = st.note, spin = prep || st.cancelled || pressed, ic = 'cloud', wifi = false;
+  const peer = st.route.startsWith('direct:') ? st.route.slice(7) || '상대 폰' : '';
+  const speedText = sp > 0 ? ` · ${(sp / MB).toFixed(1)}MB/s` : '';
+  if (pressed || chip === '시작 중') chip = ''; // 버튼에 "시작 중"이 이미 있음
+  else if (moving && !st.cancelled) {
+    if (peer) { chip = (S.receiver ? `${peer}에서 직접` : `${peer}로 직접`) + speedText; ic = 'wifi'; wifi = true; }
+    else { chip = (S.receiver ? '받는 중' : '클라우드로') + speedText; ic = S.receiver ? 'down' : 'cloud'; }
+  }
+  else if (!st.busy && S.receiver && st.listening && !chip) { chip = '직접 받기 대기 중'; ic = 'wifi'; wifi = true; }
   else if (chip.startsWith('완료')) ic = 'check';
   else if (chip === '취소됨') ic = 'stop';
   else if (chip.startsWith('자동 꺼짐')) ic = 'clock';
   $('#chip').classList.toggle('hide', !chip);
   $('#chip').classList.toggle('muted', !spin && (ic === 'check' || ic === 'clock'));
+  $('#chip').classList.toggle('wifi', wifi);
   if (ic === 'check' && chip.startsWith('완료')) chip = '최근 ' + chip.replace(/^완료 · /, '');
   if (chip) {
     setText($('#chipText'), chip);
@@ -286,6 +293,7 @@ function fillSettings() {
   setText($('#vAccount'), S.signedIn ? '연결됨' : '로그인');
   setText($('#autoLabel'), S.receiver ? '자동 받기' : '자동 보내기');
   setText($('#vBattery'), S.batteryOk ? '허용됨' : '허용하기');
+  setText($('#vPeer'), S.lastPeer || '아직 없음');
 }
 
 /* ---------- 예약 · 고르기 창 ---------- */

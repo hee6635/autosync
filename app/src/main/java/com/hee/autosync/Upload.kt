@@ -7,6 +7,8 @@ import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
 import android.provider.OpenableColumns
 import kotlinx.coroutines.coroutineScope
+import org.json.JSONObject
+import java.util.UUID
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -117,7 +119,15 @@ suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String, manu
     val deleteAfter = s.deleteAfter
     val lock = Any()
 
+    // 같은 와이파이에 받는 폰이 있으면 묻지 않고 직접, 없으면 클라우드
+    val peer = if (Direct.onWifi(ctx)) try { Direct.discover(ctx) } catch (e: Exception) { null } else null
+    val dkey = peer?.let { try { Direct.key(s, drive, folder) } catch (e: Exception) { null } }
+    val direct = AtomicBoolean(peer != null && dkey != null)
+    val batch = JSONObject().put("id", UUID.randomUUID().toString()).put("count", jobs.size).put("bytes", jobs.sumOf { it.doc.size })
+    val from = s.defaultSub()
+
     Status.start(jobs.size, jobs.sumOf { it.doc.size })
+    Status.route = if (direct.get()) "direct:${peer!!.name}" else "cloud"
     Status.stage(4, "")
     val gate = Semaphore(s.concurrency)
     try {
@@ -126,12 +136,26 @@ suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String, manu
                 gate.withPermit {
                     val d = j.doc
                     if (Status.cancelled) { failedRoots += j.root; return@withPermit }
-                    if (full.get() || free.get() - d.size < QUOTA_MARGIN) {
+                    if (!direct.get() && (full.get() || free.get() - d.size < QUOTA_MARGIN)) {
                         if (!full.getAndSet(true)) log(ctx, "구글 계정 용량 부족, 업로드 멈춤")
                         failedRoots += j.root; return@withPermit
                     }
                     Status.begin(d.name, d.size)
                     try {
+                        var viaDirect = false
+                        if (direct.get()) try {
+                            val input = cr.openInputStream(d.uri) ?: throw java.io.IOException("파일을 열 수 없음")
+                            viaDirect = Direct.send(peer!!, dkey!!, from, d, batch, input) { n -> Status.progress(d.name, n) }
+                            if (!viaDirect) throw java.io.IOException("MD5 불일치")
+                        } catch (e: java.io.IOException) {
+                            if (e is CancelledByUser) throw e
+                            if (direct.getAndSet(false)) {
+                                log(ctx, "직접 전송 끊김, 클라우드로: ${e.message}")
+                                Status.route = "cloud"
+                            }
+                            Status.begin(d.name, d.size)
+                        }
+                        if (!viaDirect) {
                         val sub = synchronized(subIds) { subIds.getOrPut(j.sub) { drive.folderId(j.sub, folder) } } // 같은 폴더를 두 번 만들지 않게
                         val md = MessageDigest.getInstance("MD5")
                         val input = cr.openInputStream(d.uri) ?: throw java.io.IOException("파일을 열 수 없음")
@@ -142,6 +166,7 @@ suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String, manu
                             throw java.io.IOException("MD5 불일치, 폰 파일 보관")
                         }
                         free.addAndGet(-d.size)
+                        }
                         Stats.add(ctx, "up", d.name, d.size)
                         sent.incrementAndGet()
                         if (deleteAfter) {

@@ -44,6 +44,14 @@ class Settings(ctx: Context) {
     var uploaded: Set<String>
         get() = p.getStringSet("uploaded", emptySet())!!.toSet()
         set(v) = p.edit().putStringSet("uploaded", v).apply()
+    /** 받는 폰: 같은 와이파이에서 직접 받기 */
+    var direct: Boolean get() = bool("direct", true); set(v) = setBool("direct", v)
+    var directKey: String?
+        get() = p.getString("directKey", null)
+        set(v) = p.edit().putString("directKey", v).apply()
+    var lastPeer: String
+        get() = p.getString("lastPeer", "")!!
+        set(v) = p.edit().putString("lastPeer", v).apply()
     var folderId: String?
         get() = p.getString("folderId", null)
         set(v) = p.edit().putString("folderId", v).apply()

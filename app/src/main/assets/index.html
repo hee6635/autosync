@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>autosync</title>
+<title>Auto Sync</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
 
 <main id="home" class="screen">
   <header class="top">
-    <h1>autosync</h1>
+    <h1>Auto Sync</h1>
     <button class="icon" aria-label="설정" data-go="settings"><svg><use href="#i-gear"/></svg></button>
   </header>
   <nav class="seg" id="modeSeg" aria-label="모드">
@@ -72,6 +72,8 @@
   </div>
   <h2>받는 폰</h2>
   <div class="rows card list">
+    <button class="row" data-sw="direct"><svg class="ic"><use href="#i-wifi"/></svg><span class="label">와이파이로 직접 받기</span><span class="sw"><span class="k"></span></span></button>
+    <div class="row"><svg class="ic"><use href="#i-phone"/></svg><span class="label">짝지은 폰</span><span class="val" id="vPeer"></span></div>
     <button class="row" data-pick="minFreeGb"><svg class="ic"><use href="#i-hdd"/></svg><span class="label">받기 중지</span><span class="val" id="vMinFree"></span><svg class="chev"><use href="#i-chev"/></svg></button>
     <button class="row last" data-time="down"><svg class="ic"><use href="#i-clock"/></svg><span class="label">예약 다운로드</span><span class="val" id="vDown"></span><svg class="chev"><use href="#i-chev"/></svg></button>
   </div>

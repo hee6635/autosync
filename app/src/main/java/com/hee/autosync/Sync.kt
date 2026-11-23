@@ -53,6 +53,7 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
             val drive = Drive { Drive.token(ctx) ?: throw IllegalStateException("구글 로그인 필요") }
             Status.stage(1, "드라이브 접속 중")
             val folder = s.folderId ?: drive.folderId().also { s.folderId = it }
+            if (s.receiver) DirectService.sync(ctx) // 꺼져 있으면 다시 염
             if (s.receiver) download(ctx, s, drive, folder) else upload(ctx, s, drive, folder, manual)
             Result.success()
         } catch (e: CancelledByUser) {

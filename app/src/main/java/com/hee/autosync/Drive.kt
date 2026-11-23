@@ -90,6 +90,17 @@ class Drive(private val token: () -> String) {
         return (0 until a.length()).map { a.getJSONObject(it).let { o -> o.getString("id") to o.getString("name") } }
     }
 
+    /** 폴더에 붙여 두는 앱 전용 값(appProperties). 같은 앱(같은 서명)만 읽음. */
+    fun getProp(id: String, k: String): String? =
+        open("$API/$id?fields=appProperties").json().optJSONObject("appProperties")?.optString(k)?.ifEmpty { null }
+
+    fun setProp(id: String, k: String, v: String) {
+        open("$API/$id?fields=id", "POST").apply {
+            setRequestProperty("X-HTTP-Method-Override", "PATCH") // HttpURLConnection은 PATCH를 못 씀
+            sendJson(JSONObject().put("appProperties", JSONObject().put(k, v)))
+        }.json()
+    }
+
     /** 구글 계정 용량 (전체, 사용). 전체가 null이면 무제한. */
     fun quota(): Pair<Long?, Long> {
         val q = open("https://www.googleapis.com/drive/v3/about?fields=storageQuota").json().getJSONObject("storageQuota")

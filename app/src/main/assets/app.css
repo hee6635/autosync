@@ -1,5 +1,5 @@
 :root {
-  --fg: #191F28; --sub: #4E5968; --line: #E5E8EB; --acc: #1B64DA; --acc2: #3182F6; --tint: #E8F3FF; --red: #D93F2B;
+  --fg: #191F28; --sub: #4E5968; --line: #E5E8EB; --acc: #5B3DF5; --acc2: #6B4EFF; --tint: #EFEBFF; --red: #D93F2B;
   --ease: cubic-bezier(.2, .9, .25, 1); --t: .35s;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -211,3 +211,7 @@ h2 { margin: 18px 0 8px 6px; }
 .qbar { height: 6px; border-radius: 3px; background: var(--line); margin: -6px 0 12px; overflow: hidden; }
 .qbar i { display: block; height: 6px; border-radius: 3px; background: var(--acc); min-width: 6px; transform-origin: left; transition: transform .6s var(--ease); }
 .pills { background: var(--line); }
+
+/* 보라 (v0.6) · 직접 전송은 초록 */
+.chip.wifi { color: #0F8A5F; }
+.row.on .sw { background: var(--acc2); }

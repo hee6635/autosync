@@ -9,12 +9,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- 앱을 내려도 보내기/받기가 끊기지 않게 배터리 최적화 제외 요청 -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- 같은 와이파이에서 받는 폰 찾기(mDNS) -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <!-- 받는 폰(픽셀1, 안드로이드 10)이 DCIM/Camera에 직접 쓰기 위함 -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
 
     <application
-        android:label="autosync"
-        android:icon="@android:drawable/ic_menu_upload"
+        android:label="Auto Sync"
+        android:icon="@mipmap/ic_launcher"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:requestLegacyExternalStorage="true">
 
@@ -24,6 +26,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".DirectService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"

@@ -47,7 +47,6 @@ suspend fun download(ctx: Context, s: Settings, drive: Drive, folder: String) {
     if (jobs.isEmpty()) { Status.note = "받을 파일 없음"; return }
     Status.stage(3, "공간 확인 중")
     val minFree = s.minFreeGb * GB
-    val taken = mutableSetOf<String>()
     val full = AtomicBoolean(false)
     val got = AtomicInteger(0)
     Status.start(jobs.size, jobs.sumOf { it.second.size })
@@ -70,7 +69,7 @@ suspend fun download(ctx: Context, s: Settings, drive: Drive, folder: String) {
                         if (existing.exists() && existing.length() == r.size && md5(existing.inputStream()) == r.md5) {
                             drive.delete(r.id); Stats.add(ctx, "delCloud", r.name, r.size); return@withPermit
                         }
-                        val target = synchronized(taken) { uniqueFile(dir, name, taken).also { taken += it.name } }
+                        val target = synchronized(receiving) { uniqueFile(dir, name, receiving).also { receiving += it.name } }
                         val tmp = File(dir, ".${target.name}.part")
                         Status.begin(label, r.size)
                         try {
@@ -83,7 +82,7 @@ suspend fun download(ctx: Context, s: Settings, drive: Drive, folder: String) {
                             if (!tmp.renameTo(target)) { log(ctx, "저장 실패: ${r.name}"); return@withPermit }
                         } finally {
                             tmp.delete()
-                            synchronized(taken) { taken -= target.name }
+                            synchronized(receiving) { receiving -= target.name }
                         }
                         MediaScannerConnection.scanFile(ctx, arrayOf(target.path), null, null)
                         Stats.add(ctx, "down", target.name, r.size)

@@ -59,12 +59,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         s = Settings(this)
-        window.statusBarColor = Color.WHITE
-        window.navigationBarColor = Color.WHITE
+        window.statusBarColor = Color.parseColor("#F2F4F6")
+        window.navigationBarColor = Color.parseColor("#F2F4F6")
         web = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#F2F4F6"))
             addJavascriptInterface(Bridge(), "A")
             loadUrl("file:///android_asset/index.html")
         }
@@ -77,6 +77,7 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 33 && !granted(Manifest.permission.POST_NOTIFICATIONS))
             askPerms.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
         schedule(this)
+        DirectService.sync(this)
     }
 
     override fun onResume() {
@@ -132,6 +133,7 @@ class MainActivity : ComponentActivity() {
             }
             return JSONObject()
                 .put("receiver", s.receiver).put("signedIn", signedIn).put("auto", s.auto)
+                .put("direct", s.direct).put("lastPeer", s.lastPeer)
                 .put("batteryOk", getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(packageName))
                 .put("askedBattery", getSharedPreferences("settings", MODE_PRIVATE).getBoolean("askedBattery", false))
                 .put("wifiOnly", s.wifiOnly).put("chargingOnly", s.chargingOnly)
@@ -155,7 +157,8 @@ class MainActivity : ComponentActivity() {
         fun set(key: String, value: String) {
             val on = value == "true"
             when (key) {
-                "receiver" -> { s.receiver = on; reload() }
+                "receiver" -> { s.receiver = on; DirectService.sync(this@MainActivity); reload() }
+                "direct" -> { s.direct = on; DirectService.sync(this@MainActivity) }
                 "auto" -> { s.auto = on; Status.note = "" }
                 "wifiOnly" -> s.wifiOnly = on
                 "chargingOnly" -> s.chargingOnly = on
