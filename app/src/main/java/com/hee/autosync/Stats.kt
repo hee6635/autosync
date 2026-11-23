@@ -18,13 +18,16 @@ object Status {
     @Volatile var busy = false
     @Volatile var step = -1
     @Volatile var cancelled = false
-    /** 지금 옮기는 파일 이름 → % */
-    val items = ConcurrentHashMap<String, Int>()
+    /** 지금 옮기는 파일 이름 → [옮긴 바이트, 전체 바이트]. 다 옮기면 "확인 중"(드라이브 응답·MD5 비교). */
+    val items = ConcurrentHashMap<String, LongArray>()
+
+    fun begin(name: String, size: Long) { items[name] = longArrayOf(0, size) }
+    fun progress(name: String, done: Long) { check(); items[name]?.set(0, done) }
 
     @Synchronized fun start(count: Int, bytes: Long) {
         running = true; totalBytes = bytes; remainCount = count; remainBytes = bytes; items.clear()
     }
-    @Synchronized fun done(bytes: Long) { remainCount--; remainBytes -= bytes }
+    @Synchronized fun done(name: String, bytes: Long) { items.remove(name); remainCount--; remainBytes -= bytes }
     fun stop() { running = false; items.clear() }
     fun stage(n: Int, text: String) { step = n; note = text }
 
@@ -34,7 +37,9 @@ object Status {
     fun json(): JSONObject = JSONObject()
         .put("running", running).put("note", note).put("busy", busy).put("step", step).put("cancelled", cancelled)
         .put("totalBytes", totalBytes).put("remainCount", remainCount).put("remainBytes", remainBytes)
-        .put("items", JSONArray(items.entries.sortedBy { it.key }.map { JSONObject().put("name", it.key).put("pct", it.value) }))
+        .put("items", JSONArray(items.entries.sortedBy { it.key }.map { (n, v) -> JSONObject().put("name", n).put("done", v[0]).put("size", v[1]) }))
+        // 원 %: 시작할 때 계산한 전체 중 지금까지 올린 바이트 (옮기는 중인 파일 진행분 포함)
+        .put("sentBytes", synchronized(this) { totalBytes - remainBytes + items.values.sumOf { it[0] } })
 }
 
 class CancelledByUser : java.io.IOException("취소됨")

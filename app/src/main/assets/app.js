@@ -10,6 +10,7 @@ const stack = [];      // 열린 페이지·창 (뒤로가기 순서)
 const GB = 1024 ** 3, MB = 1024 ** 2;
 function size(b) {
   if (!b) return '0';
+  if (b >= 1024 * GB) return (b / 1024 / GB).toFixed(1) + 'TB';
   if (b >= GB) return (b / GB).toFixed(b >= 10 * GB ? 0 : 1) + 'GB';
   if (b >= MB) return Math.round(b / MB) + 'MB';
   return Math.max(1, Math.round(b / 1024)) + 'KB';
@@ -98,17 +99,20 @@ function renderHome() {
   if (rows._html !== html) { rows.innerHTML = html; rows._html = html; }
 
   let pct, big, small;
+  const sp = speed(st);
   if (st.running && st.totalBytes > 0) {
-    pct = Math.round((1 - st.remainBytes / st.totalBytes) * 100);
+    const left = Math.max(0, st.totalBytes - st.sentBytes);
+    pct = Math.min(100, Math.floor(st.sentBytes / st.totalBytes * 100));
     big = pct + '%';
-    small = `${num(st.remainCount)}개 · ${size(st.remainBytes)} 남음`;
+    small = `${num(st.remainCount)}개 · ${size(left)} 남음` + (sp > 0 ? ' · ' + eta(left / sp) : '');
   } else if (S.waiting.n > 0) {
     pct = 0; big = num(S.waiting.n);
     small = `개 · ${size(S.waiting.b)} ${S.receiver ? '받을 것' : '보낼 것'}`;
   } else {
     pct = 100; big = null; small = S.receiver ? '모두 받음' : '모두 보냄';
   }
-  $('#ringFill').style.strokeDashoffset = (C * (1 - pct / 100)).toFixed(1);
+  const frac = st.running && st.totalBytes > 0 ? Math.min(1, st.sentBytes / st.totalBytes) : pct / 100;
+  $('#ringFill').style.strokeDashoffset = (C * (1 - frac)).toFixed(1);
   const bigEl = $('#ringBig');
   if (big === null) { if (!bigEl.querySelector('svg')) bigEl.innerHTML = icon('check', ''); }
   else setText(bigEl, big);
@@ -125,7 +129,7 @@ function renderHome() {
   const pressed = Date.now() - pressedAt < 4000 && !st.busy && !st.note.includes('대기');
   let chip = st.note, spin = prep || st.cancelled || pressed, ic = 'cloud';
   if (pressed) chip = '시작 중';
-  else if (moving && !st.cancelled) { chip = (S.receiver ? '받는 중' : '보내는 중') + (st.items.length > 1 ? ` · ${st.items.length}개 동시` : ''); ic = S.receiver ? 'down' : 'up'; }
+  else if (moving && !st.cancelled) { chip = (S.receiver ? '받는 중' : '보내는 중') + (sp > 0 ? ` · ${(sp / MB).toFixed(1)}MB/s` : ''); ic = S.receiver ? 'down' : 'up'; }
   else if (chip.startsWith('완료')) ic = 'check';
   else if (chip === '취소됨') ic = 'stop';
   else if (chip.startsWith('자동 꺼짐')) ic = 'clock';
@@ -150,6 +154,26 @@ function renderHome() {
   mb.dataset.state = !S.signedIn ? 'login' : moving && !st.cancelled ? 'cancel' : (st.busy || pressed) ? 'wait' : 'go';
 }
 let pressedAt = 0;
+
+// 실시간 속도: 최근 6초 동안 올린(받은) 바이트 ÷ 시간. 동시 전송 전체 합계.
+const samples = [];
+function speed(st) {
+  if (!st.running) { samples.length = 0; return 0; }
+  const now = Date.now(), last = samples[samples.length - 1];
+  if (last && (st.sentBytes < last.b || st.totalBytes !== last.total)) samples.length = 0; // 새로 시작함
+  samples.push({ t: now, b: st.sentBytes, total: st.totalBytes });
+  while (samples.length > 2 && now - samples[0].t > 6000) samples.shift();
+  const a = samples[0], dt = (now - a.t) / 1000;
+  return dt >= 2 ? (st.sentBytes - a.b) / dt : 0;
+}
+function eta(sec) {
+  if (!isFinite(sec)) return '';
+  const m = Math.round(sec / 60);
+  if (m < 1) return '1분 안';
+  if (m < 60) return `약 ${m}분`;
+  const h = Math.floor(m / 60), r = m % 60;
+  return `약 ${h}시간` + (r ? ` ${r}분` : '');
+}
 const STEPS = () => S.receiver ? ['로그인', '접속', '목록', '공간', '받기'] : ['로그인', '접속', '폴더', '용량', '보내기'];
 function drawSteps(n) {
   const box = $('#steps'), names = STEPS().join();
@@ -166,9 +190,11 @@ function drawFiles(items) {
     box.innerHTML = names.map((n) => `<div class="f">${icon(/\.(mp4|mov|3gp|m4v|mkv|webm|avi|mpe?g|wmv)$/i.test(n) ? 'play' : 'image')}<div class="w"><div class="t"><span>${esc(n)}</span><b>0%</b></div><div class="bar"><i></i></div></div></div>`).join('');
   }
   box.querySelectorAll('.f').forEach((f, i) => {
-    const p = items[i].pct;
-    setText(f.querySelector('b'), p + '%');
-    f.querySelector('.bar i').style.transform = `scaleX(${p / 100})`;
+    const it = items[i], p = it.size > 0 ? it.done / it.size : 0, chk = it.size > 0 && it.done >= it.size;
+    f.classList.toggle('chk', chk);
+    const b = f.querySelector('b'), html = chk ? '확인 중' : `<span class="sz">${size(it.done)} / ${size(it.size)} · </span>${Math.floor(p * 100)}%`;
+    if (b._h !== html) { b._h = html; b.innerHTML = html; }
+    f.querySelector('.bar i').style.transform = `scaleX(${p})`;
   });
 }
 function render() {

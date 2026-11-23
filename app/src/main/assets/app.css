@@ -162,3 +162,6 @@ pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; line-height
 #mainBtn svg { width: 20px; height: 20px; stroke-width: 3; }
 .primary.danger { background: var(--red); }
 .dIcon.red { background: #FFEFED; color: var(--red); }
+.f .t b { white-space: nowrap; } .f .t .sz { color: var(--sub); font-weight: 400; }
+.f.chk .bar i { animation: pulse 1s ease-in-out infinite; } @keyframes pulse { 50% { opacity: .45; } }
+.ring .big, .ring .small, .f .t b { font-variant-numeric: tabular-nums; }

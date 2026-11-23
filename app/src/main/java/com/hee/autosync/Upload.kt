@@ -129,13 +129,13 @@ suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String) {
                         if (!full.getAndSet(true)) log(ctx, "구글 계정 용량 부족, 업로드 멈춤")
                         failedRoots += j.root; return@withPermit
                     }
-                    Status.items[d.name] = 0
+                    Status.begin(d.name, d.size)
                     try {
                         val sub = synchronized(subIds) { subIds.getOrPut(j.sub) { drive.folderId(j.sub, folder) } } // 같은 폴더를 두 번 만들지 않게
                         val md = MessageDigest.getInstance("MD5")
                         val input = cr.openInputStream(d.uri) ?: throw java.io.IOException("파일을 열 수 없음")
                         val r = drive.upload(sub, d.name, d.size, d.modified, d.mime.ifEmpty { "application/octet-stream" },
-                            DigestInputStream(input, md)) { n -> Status.check(); Status.items[d.name] = (n * 100 / d.size).toInt() }
+                            DigestInputStream(input, md)) { n -> Status.progress(d.name, n) }
                         if (r.md5 != hex(md.digest())) {
                             drive.delete(r.id)
                             throw java.io.IOException("MD5 불일치, 폰 파일 보관")
@@ -152,8 +152,7 @@ suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String) {
                         failedRoots += j.root
                         if (e !is CancelledByUser) log(ctx, "실패 ${d.name}: ${e.message}")
                     } finally {
-                        Status.items.remove(d.name)
-                        Status.done(d.size)
+                        Status.done(d.name, d.size)
                     }
                 }
             }

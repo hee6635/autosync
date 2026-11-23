@@ -72,11 +72,11 @@ suspend fun download(ctx: Context, s: Settings, drive: Drive, folder: String) {
                         }
                         val target = synchronized(taken) { uniqueFile(dir, name, taken).also { taken += it.name } }
                         val tmp = File(dir, ".${target.name}.part")
-                        Status.items[label] = 0
+                        Status.begin(label, r.size)
                         try {
                             val md = MessageDigest.getInstance("MD5")
                             DigestOutputStream(tmp.outputStream(), md).use { out ->
-                                drive.download(r.id, out) { n -> Status.check(); Status.items[label] = if (r.size > 0) (n * 100 / r.size).toInt() else 0 }
+                                drive.download(r.id, out) { n -> Status.progress(label, n) }
                             }
                             if (hex(md.digest()) != r.md5) { log(ctx, "MD5 불일치, 드라이브에 보관: ${r.name}"); return@withPermit }
                             if (r.modified > 0) tmp.setLastModified(r.modified) // 영상은 구글포토가 수정 시각으로 날짜를 잡음
@@ -93,8 +93,7 @@ suspend fun download(ctx: Context, s: Settings, drive: Drive, folder: String) {
                     } catch (e: Exception) {
                         if (e !is CancelledByUser) log(ctx, "실패 $label: ${e.message}")
                     } finally {
-                        Status.items.remove(label)
-                        Status.done(r.size)
+                        Status.done(label, r.size)
                     }
                 }
             }
