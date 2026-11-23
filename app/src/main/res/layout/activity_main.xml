@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F5F6F8"
+    android:fitsSystemWindows="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="autosync"
+            android:textColor="#111827"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <RadioGroup
+            android:id="@+id/modeGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/modeSender"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="보내는 폰" />
+
+            <RadioButton
+                android:id="@+id/modeReceiver"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="받는 폰 (픽셀1)" />
+        </RadioGroup>
+
+        <TextView style="@style/Section" android:text="계정" />
+
+        <TextView
+            android:id="@+id/accountStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#374151" />
+
+        <Button
+            android:id="@+id/signIn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="구글 로그인 (드라이브 권한)" />
+
+        <TextView style="@style/Section" android:text="실행 조건" />
+
+        <CheckBox
+            android:id="@+id/wifiOnly"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="와이파이에서만" />
+
+        <CheckBox
+            android:id="@+id/chargingOnly"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="충전 중에만" />
+
+        <LinearLayout
+            android:id="@+id/senderBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView style="@style/Section" android:text="보내는 폰" />
+
+            <CheckBox
+                android:id="@+id/deleteAfter"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="보낸 후 폰에서 삭제 (MD5 확인 후)" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="자동으로 보낼 폴더"
+                android:textColor="#4B5563" />
+
+            <TextView
+                android:id="@+id/autoFolders"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#111827" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/addFolder"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="폴더 추가" />
+
+                <Button
+                    android:id="@+id/clearFolders"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="목록 비우기" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="수동으로 보내기 (한 번)"
+                android:textColor="#4B5563" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/pickFiles"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="파일 선택" />
+
+                <Button
+                    android:id="@+id/pickFolder"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="폴더 선택" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/receiverBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView style="@style/Section" android:text="받는 폰" />
+
+            <TextView
+                android:id="@+id/storage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#374151" />
+
+            <Button
+                android:id="@+id/storagePerm"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="저장소 권한 허용" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/syncNow"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="16dp"
+            android:text="지금 실행" />
+
+        <TextView style="@style/Section" android:text="기록" />
+
+        <TextView
+            android:id="@+id/logView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:textColor="#111827"
+            android:textIsSelectable="true"
+            android:textSize="12sp" />
+    </LinearLayout>
+</ScrollView>
