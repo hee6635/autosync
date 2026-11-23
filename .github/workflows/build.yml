@@ -12,7 +12,10 @@ jobs:
         env: { KS: "${{ secrets.KEYSTORE_B64 }}" }
         run: |
           if [ -n "$KS" ]; then
-            echo "$KS" | base64 -d > "$RUNNER_TEMP/release.jks"
+            # 폰에서 복사하면 공백/줄바꿈이 섞이기 쉬워서 제거
+            KS=$(printf %s "$KS" | tr -d ' \r\n\t')
+            echo "KEYSTORE_B64 길이: ${#KS} (정상 3432)"
+            printf %s "$KS" | base64 -d > "$RUNNER_TEMP/release.jks"
             echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
           else
             echo "::warning::KEYSTORE_B64 시크릿 없음 - 임시 키로 서명됨 (구글 로그인 안 됨)"
