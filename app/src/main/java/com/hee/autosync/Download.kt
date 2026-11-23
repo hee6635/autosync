@@ -43,7 +43,7 @@ suspend fun download(ctx: Context, s: Settings, drive: Drive, folder: String) {
     val dir = cameraDir()
     if (!dir.isDirectory && !dir.mkdirs()) { log(ctx, "DCIM/Camera 폴더를 만들 수 없음(저장소 권한 확인)"); return }
     val jobs = remoteJobs(drive, folder)
-    if (jobs.isEmpty()) return
+    if (jobs.isEmpty()) { Status.note = "받을 파일 없음"; return }
     val minFree = s.minFreeGb * GB
     val taken = mutableSetOf<String>()
     val full = AtomicBoolean(false)

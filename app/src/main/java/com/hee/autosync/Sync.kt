@@ -13,6 +13,7 @@ import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
@@ -22,6 +23,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     companion object {
@@ -82,8 +84,12 @@ fun schedule(ctx: Context) {
 }
 
 /** "지금 실행": 와이파이/충전 조건은 지키고, 예약 시간은 무시하고 바로 시작 */
-fun syncNow(ctx: Context) {
+fun syncNow(ctx: Context) = thread {
+    val wm = WorkManager.getInstance(ctx)
+    // 이미 도는 중이면 그대로. 아니면 새로 (전에 실패해서 재시도 대기 중인 것 뒤에 줄 서지 않게 교체)
+    if (wm.getWorkInfosForUniqueWork("now").get().any { it.state == WorkInfo.State.RUNNING }) return@thread
+    Status.note = "시작 중"
     val req = OneTimeWorkRequestBuilder<SyncWorker>().setConstraints(constraints(Settings(ctx)))
         .setInputData(workDataOf("manual" to true)).build()
-    WorkManager.getInstance(ctx).enqueueUniqueWork("now", ExistingWorkPolicy.APPEND_OR_REPLACE, req)
+    wm.enqueueUniqueWork("now", ExistingWorkPolicy.REPLACE, req)
 }

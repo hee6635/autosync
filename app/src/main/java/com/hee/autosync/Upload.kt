@@ -101,7 +101,7 @@ suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String) {
     val skipped = mutableMapOf<String, Int>()
     val jobs = pendingJobs(ctx, s, skipped)
     val pending = s.pending
-    if (jobs.isEmpty()) { clearPending(ctx, s, pending, emptySet()); return }
+    if (jobs.isEmpty()) { clearPending(ctx, s, pending, emptySet()); Status.note = "보낼 파일 없음"; return }
 
     val (limit, usage) = drive.quota()
     val free = AtomicLong(if (limit == null) Long.MAX_VALUE else limit - usage)
