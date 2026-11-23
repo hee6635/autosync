@@ -13,25 +13,29 @@
     <h1>autosync</h1>
     <button class="icon" aria-label="설정" data-go="settings"><svg><use href="#i-gear"/></svg></button>
   </header>
-  <nav class="tabs" id="modeTabs" aria-label="모드">
+  <nav class="seg" id="modeSeg" aria-label="모드">
     <button data-mode="false">보내는 폰</button>
     <button data-mode="true">받는 폰</button>
-    <span class="bar"></span>
+    <span class="plate"></span>
   </nav>
   <div class="body" id="homeBody">
-    <div class="ring" role="img" id="ring">
-      <svg viewBox="0 0 240 240"><circle class="track" cx="120" cy="120" r="111"/><circle class="fill" id="ringFill" cx="120" cy="120" r="111"/></svg>
-      <div class="center">
-        <span class="big" id="ringBig">0</span>
-        <span class="small" id="ringSmall"></span>
+    <section class="card main">
+      <div class="ring" role="img" id="ring">
+        <svg viewBox="0 0 220 220"><circle class="track" cx="110" cy="110" r="103.5"/><circle class="fill" id="ringFill" cx="110" cy="110" r="103.5"/></svg>
+        <div class="center">
+          <span class="lb" id="ringLabel"></span>
+          <span class="big" id="ringBig">0</span>
+          <span class="small" id="ringSmall"></span>
+        </div>
       </div>
-    </div>
-    <div class="chip" id="chip"><svg id="chipIc"><use href="#i-cloud"/></svg><span id="chipText"></span></div>
-    <div class="collapse" id="stepsBox"><div><div class="steps" id="steps"></div></div></div>
-    <div class="collapse" id="filesBox"><div><div class="files" id="files"></div></div></div>
-    <div class="rows" id="homeRows"></div>
+      <div class="chip" id="chip"><svg id="chipIc"><use href="#i-cloud"/></svg><span id="chipText"></span></div>
+      <div class="collapse" id="stepsBox"><div><div class="steps" id="steps"></div></div></div>
+      <div class="collapse" id="filesBox"><div><div class="files" id="files"></div></div></div>
+      <button class="primary" id="mainBtn"></button>
+    </section>
+    <div class="tiles" id="tiles"></div>
+    <div class="rows card list" id="homeRows"></div>
   </div>
-  <button class="primary bottom" id="mainBtn"></button>
 </main>
 
 <section class="screen page" id="recent">
@@ -39,15 +43,15 @@
   <nav class="tabs" id="recentTabs"><button data-t="0"></button><button data-t="1"></button><span class="bar"></span></nav>
   <div class="pills" id="rangePills"><button data-r="today">오늘</button><button data-r="all">전체</button><span class="plate"></span></div>
   <div class="headline"><span class="big" id="recentCount"></span><span id="recentSize"></span></div>
-  <div class="rows" id="recentList"></div>
+  <div class="rows card list" id="recentList"></div>
 </section>
 
 <section class="screen page" id="folders">
   <header class="top"><button class="icon back" aria-label="뒤로"><svg><use href="#i-back"/></svg></button><h1>보낼 폴더</h1></header>
-  <div class="rows" id="folderList"></div>
+  <div class="rows card list" id="folderList"></div>
   <button class="add" data-act="addFolder"><svg><use href="#i-plus"/></svg>폴더 추가</button>
   <h2>한 번만 보내기</h2>
-  <div class="rows">
+  <div class="rows card list">
     <button class="row" data-act="pickFiles"><svg class="ic"><use href="#i-image"/></svg><span class="label">파일 고르기</span><svg class="chev"><use href="#i-chev"/></svg></button>
     <button class="row last" data-act="pickFolder"><svg class="ic"><use href="#i-folder"/></svg><span class="label">폴더 고르기</span><svg class="chev"><use href="#i-chev"/></svg></button>
   </div>
@@ -55,24 +59,25 @@
 
 <section class="screen page" id="settings">
   <header class="top"><button class="icon back" aria-label="뒤로"><svg><use href="#i-back"/></svg></button><h1>설정</h1></header>
-  <div class="rows">
+  <div class="rows card list">
     <button class="row" data-sw="auto"><svg class="ic"><use href="#i-clock"/></svg><span class="label" id="autoLabel">자동 보내기</span><span class="sw"><span class="k"></span></span></button>
     <button class="row" data-sw="wifiOnly"><svg class="ic"><use href="#i-wifi"/></svg><span class="label">와이파이에서만</span><span class="sw"><span class="k"></span></span></button>
     <button class="row" data-sw="chargingOnly"><svg class="ic"><use href="#i-bolt"/></svg><span class="label">충전 중에만</span><span class="sw"><span class="k"></span></span></button>
     <button class="row last" data-pick="concurrency"><svg class="ic"><use href="#i-layers"/></svg><span class="label">동시 전송</span><span class="val" id="vConcurrency"></span><svg class="chev"><use href="#i-chev"/></svg></button>
   </div>
   <h2>보내는 폰</h2>
-  <div class="rows">
+  <div class="rows card list">
     <button class="row" data-sw="deleteAfter"><svg class="ic"><use href="#i-trash"/></svg><span class="label">보낸 후 삭제</span><span class="sw"><span class="k"></span></span></button>
     <button class="row last" data-time="up"><svg class="ic"><use href="#i-clock"/></svg><span class="label">예약 업로드</span><span class="val" id="vUp"></span><svg class="chev"><use href="#i-chev"/></svg></button>
   </div>
   <h2>받는 폰</h2>
-  <div class="rows">
+  <div class="rows card list">
     <button class="row" data-pick="minFreeGb"><svg class="ic"><use href="#i-hdd"/></svg><span class="label">받기 중지</span><span class="val" id="vMinFree"></span><svg class="chev"><use href="#i-chev"/></svg></button>
     <button class="row last" data-time="down"><svg class="ic"><use href="#i-clock"/></svg><span class="label">예약 다운로드</span><span class="val" id="vDown"></span><svg class="chev"><use href="#i-chev"/></svg></button>
   </div>
-  <h2>계정</h2>
-  <div class="rows">
+  <h2>기타</h2>
+  <div class="rows card list">
+    <button class="row" data-act="battery"><svg class="ic"><use href="#i-bolt"/></svg><span class="label">배터리 제한 없음</span><span class="val" id="vBattery"></span><svg class="chev"><use href="#i-chev"/></svg></button>
     <button class="row" data-act="signIn"><svg class="ic"><use href="#i-user"/></svg><span class="label">구글 계정</span><span class="val" id="vAccount"></span><svg class="chev"><use href="#i-chev"/></svg></button>
     <button class="row last" data-go="log"><svg class="ic"><use href="#i-list"/></svg><span class="label">기록</span><svg class="chev"><use href="#i-chev"/></svg></button>
   </div>

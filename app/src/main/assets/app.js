@@ -2,7 +2,7 @@
 // 화면 동작. 데이터는 안드로이드 다리 window.A 에서 받음 (A.state() 등).
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
-const C = 697.4; // 원 둘레 (r=111)
+const C = 650.3; // 원 둘레 (r=103.5)
 let S = null;          // 마지막 상태
 let mode = null;       // 화면에 그려진 모드 (false 보내는 폰, true 받는 폰)
 const stack = [];      // 열린 페이지·창 (뒤로가기 순서)
@@ -74,50 +74,56 @@ function row({ icon: ic, color = '', label, val = '', go, act, time, last }) {
   return `<button class="row${last ? ' last' : ''}" ${data}>${icon(ic, 'ic ' + color)}<span class="label">${label}</span><span class="val">${val}</span>${chev}</button>`;
 }
 function homeRows() {
-  const st = S.stats.today, q = S.quota;
+  const q = S.quota;
   const qv = !q ? '-' : q.limit < 0 ? '무제한' : size(Math.max(0, q.limit - q.usage)) + ' 남음';
-  const t = (k) => `${num(st[k].n)}개 · ${size(st[k].b)}`;
   const r = S.receiver ? [
-    { icon: 'down', color: 'blue', label: '오늘 다운로드', val: t('down'), go: 'recent' },
-    { icon: 'trash', color: 'red', label: '클라우드에서 삭제', val: t('delCloud'), go: 'recent' },
     { icon: 'cloud', label: '구글 계정', val: qv },
     { icon: 'hdd', label: '폰 남은 공간', val: size(S.phoneFree) },
     { icon: 'clock', label: '예약', val: win(S.down), time: 'down' },
   ] : [
-    { icon: 'up', color: 'blue', label: '오늘 업로드', val: t('up'), go: 'recent' },
-    { icon: 'trash', color: 'red', label: '장치에서 삭제', val: t('delLocal'), go: 'recent' },
     { icon: 'cloud', label: '구글 계정', val: qv },
     { icon: 'folder', label: '보낼 폴더', val: S.folders.length + '개', go: 'folders' },
     { icon: 'clock', label: '예약', val: win(S.up), time: 'up' },
   ];
   if (S.receiver && S.needStorage) r.unshift({ icon: 'folder', color: 'red', label: '저장소 권한', val: '허용하기', act: 'storage' });
   r[r.length - 1].last = true;
-  return r.map(row).join('');
+  // 구글 계정 줄 아래 사용량 막대
+  const used = q && q.limit > 0 ? Math.min(100, q.usage / q.limit * 100).toFixed(1) : 0;
+  return r.map((x) => row(x) + (x.label === '구글 계정' && q && q.limit > 0 ? `<div class="qbar"><i style="width:${used}%"></i></div>` : '')).join('');
+}
+function homeTiles() {
+  const st = S.stats.today;
+  const T = S.receiver ? [['down', 'blue', '오늘 다운로드', 'down'], ['trash', 'red', '클라우드 삭제', 'delCloud']]
+                       : [['up', 'blue', '오늘 업로드', 'up'], ['trash', 'red', '장치에서 삭제', 'delLocal']];
+  return T.map(([ic, c, l, k], i) => `<button class="tile" data-go="recent" data-tab="${i}"><span class="tl">${icon(ic, c)}${l}</span><span class="tv"><b>${num(st[k].n)}개</b> · ${size(st[k].b)}</span></button>`).join('');
 }
 function renderHome() {
-  const st = S.status, rows = $('#homeRows'), html = homeRows();
+  const st = S.status, rows = $('#homeRows'), html = homeRows(), tiles = $('#tiles'), th = homeTiles();
   if (rows._html !== html) { rows.innerHTML = html; rows._html = html; }
+  if (tiles._html !== th) { tiles.innerHTML = th; tiles._html = th; }
 
-  let pct, big, small;
-  const sp = speed(st);
+  let pct, big, small, label;
+  const sp = speed(st), what = S.receiver ? '받을 사진·영상' : '보낼 사진·영상';
   if (st.running && st.totalBytes > 0) {
     const left = Math.max(0, st.totalBytes - st.sentBytes);
     pct = Math.min(100, Math.floor(st.sentBytes / st.totalBytes * 100));
-    big = pct + '%';
-    small = `${num(st.remainCount)}개 · ${size(left)} 남음` + (sp > 0 ? ' · ' + eta(left / sp) : '');
+    label = `남음 ${num(st.remainCount)}개`; big = pct + '%';
+    small = size(left) + (sp > 0 ? ' · ' + eta(left / sp) : '');
   } else if (S.waiting.n > 0) {
-    pct = 0; big = num(S.waiting.n);
-    small = `개 · ${size(S.waiting.b)} ${S.receiver ? '받을 것' : '보낼 것'}`;
+    pct = 0; label = what; big = num(S.waiting.n) + '개';
+    small = st.busy ? '준비 중' : size(S.waiting.b);
   } else {
-    pct = 100; big = null; small = S.receiver ? '모두 받음' : '모두 보냄';
+    const k = S.receiver ? 'down' : 'up', t = S.stats.today[k];
+    pct = 100;
+    if (t.n > 0) { label = '오늘'; big = num(t.n) + '개'; small = (S.receiver ? '모두 받음 · ' : '모두 보냄 · ') + size(t.b); }
+    else { label = what; big = '0개'; small = S.receiver ? '모두 받음' : '모두 보냄'; }
   }
+  setText($('#ringLabel'), label);
   const frac = st.running && st.totalBytes > 0 ? Math.min(1, st.sentBytes / st.totalBytes) : pct / 100;
   $('#ringFill').style.strokeDashoffset = (C * (1 - frac)).toFixed(1);
-  const bigEl = $('#ringBig');
-  if (big === null) { if (!bigEl.querySelector('svg')) bigEl.innerHTML = icon('check', ''); }
-  else setText(bigEl, big);
+  setText($('#ringBig'), big);
   setText($('#ringSmall'), small);
-  $('#ring').setAttribute('aria-label', big ? `${big} ${small}` : small);
+  $('#ring').setAttribute('aria-label', `${label} ${big} ${small}`);
 
   // 단계 점 · 파일 막대 · 칩 · 버튼
   const prep = st.busy && st.step < 4, moving = st.busy && st.step === 4;
@@ -134,13 +140,15 @@ function renderHome() {
   else if (chip === '취소됨') ic = 'stop';
   else if (chip.startsWith('자동 꺼짐')) ic = 'clock';
   $('#chip').classList.toggle('hide', !chip);
+  $('#chip').classList.toggle('muted', !spin && (ic === 'check' || ic === 'clock'));
+  if (ic === 'check' && chip.startsWith('완료')) chip = '최근 ' + chip.replace(/^완료 · /, '');
   if (chip) {
     setText($('#chipText'), chip);
     const want = spin ? 'spin' : ic, c = $('#chipIc');
     if (c._ic !== want) { c._ic = want; c.innerHTML = `<use href="#i-${want}"/>`; c.classList.toggle('spin', spin); }
   }
 
-  let btn, cls = 'primary bottom', bic = '';
+  let btn, cls = 'primary', bic = '';
   if (!S.signedIn) btn = '구글 로그인';
   else if (st.cancelled && st.busy) { btn = '취소하는 중'; cls += ' soft'; bic = 'spin'; }
   else if (moving) { btn = '취소하기'; cls += ' stop'; bic = 'stop'; }
@@ -201,8 +209,8 @@ function render() {
   const first = mode === null;
   if (mode !== S.receiver) {
     const body = $('#homeBody');
-    const tab = $(`#modeTabs button[data-mode="${S.receiver}"]`);
-    select($('#modeTabs'), tab);
+    const tab = $(`#modeSeg button[data-mode="${S.receiver}"]`);
+    select($('#modeSeg'), tab);
     if (first) { mode = S.receiver; renderHome(); }
     else {
       // 모드 바뀜: 지금 내용이 옆으로 빠지고 새 내용이 반대쪽에서 들어옴
@@ -216,8 +224,16 @@ function render() {
   } else renderHome();
   if (!S.receiver && !S.askedDelete && !$('#askDialog').classList.contains('on')) openLayer($('#askDialog'));
 }
+let wasBusy = false, askedBattery = false;
 function refresh() {
-  try { S = JSON.parse(A.state()); render(); } catch (e) { console.error(e); }
+  try {
+    S = JSON.parse(A.state());
+    if (wasBusy && !S.status.busy) A.act('reload', ''); // 끝나면 남은 개수 다시 세기
+    wasBusy = S.status.busy;
+    render();
+    // 처음 질문 뒤 한 번: 배터리 최적화 제외 요청 (앱을 내려도 안 끊기게)
+    if ((S.askedDelete || S.receiver) && !S.batteryOk && !S.askedBattery && !askedBattery) { askedBattery = true; A.act('batteryOnce', ''); }
+  } catch (e) { console.error(e); }
 }
 
 /* ---------- 최근 변경사항 ---------- */
@@ -269,6 +285,7 @@ function fillSettings() {
   setText($('#vDown'), win(S.down));
   setText($('#vAccount'), S.signedIn ? '연결됨' : '로그인');
   setText($('#autoLabel'), S.receiver ? '자동 받기' : '자동 보내기');
+  setText($('#vBattery'), S.batteryOk ? '허용됨' : '허용하기');
 }
 
 /* ---------- 예약 · 고르기 창 ---------- */
@@ -299,8 +316,8 @@ document.addEventListener('click', (e) => {
   if (!t) return;
   const d = t.dataset;
   if (t.classList.contains('back')) return closeTop();
-  if (d.mode !== undefined) { if (String(S.receiver) !== d.mode) { A.set('receiver', d.mode); select($('#modeTabs'), t); setTimeout(refresh, 50); } return; }
-  if (d.go) return openPage(d.go);
+  if (d.mode !== undefined) { if (String(S.receiver) !== d.mode) { A.set('receiver', d.mode); select($('#modeSeg'), t); setTimeout(refresh, 50); } return; }
+  if (d.go) { if (d.tab) recentTab = Number(d.tab); return openPage(d.go); }
   if (d.time) return openTime(d.time);
   if (d.pick) return openPick(d.pick);
   if (d.act) {

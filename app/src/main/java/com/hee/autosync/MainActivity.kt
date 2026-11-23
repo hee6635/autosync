@@ -132,6 +132,8 @@ class MainActivity : ComponentActivity() {
             }
             return JSONObject()
                 .put("receiver", s.receiver).put("signedIn", signedIn).put("auto", s.auto)
+                .put("batteryOk", getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(packageName))
+                .put("askedBattery", getSharedPreferences("settings", MODE_PRIVATE).getBoolean("askedBattery", false))
                 .put("wifiOnly", s.wifiOnly).put("chargingOnly", s.chargingOnly)
                 .put("deleteAfter", s.deleteAfter).put("askedDelete", s.askedDelete)
                 .put("concurrency", s.concurrency).put("minFreeGb", s.minFreeGb)
@@ -197,6 +199,11 @@ class MainActivity : ComponentActivity() {
             when (name) {
                 "signIn" -> signIn()
                 "cancel" -> cancelSync()
+                "battery" -> askBattery()
+                "batteryOnce" -> {
+                    val p = getSharedPreferences("settings", MODE_PRIVATE)
+                    if (!p.getBoolean("askedBattery", false)) { p.edit().putBoolean("askedBattery", true).apply(); askBattery() }
+                }
                 "syncNow" -> { syncNow(this@MainActivity); log(this@MainActivity, "지금 실행 요청") }
                 // DCIM/Camera에서 시작. SD카드는 선택 화면 메뉴에서 고르면 됨.
                 "addFolder" -> addFolder.launch(DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:DCIM/Camera"))
@@ -219,6 +226,16 @@ class MainActivity : ComponentActivity() {
                 else reload()
             }
             .addOnFailureListener { log(this, "로그인 실패: ${it.message}"); reload() }
+    }
+
+    @SuppressLint("BatteryLife") // 개인용 앱: 백그라운드 전송이 끊기지 않게 직접 요청
+    private fun askBattery() {
+        if (getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)) return
+        try {
+            startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+        } catch (e: Exception) {
+            startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        }
     }
 
     private fun persist(uri: Uri) {
