@@ -46,15 +46,16 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
         Status.cancelled = false
         Status.busy = true
         return try {
+            if (s.receiver) DirectService.sync(ctx) // 꺼져 있으면 다시 염
             Status.stage(0, "로그인 확인 중")
-            if (Drive.token(ctx) == null) { Status.note = "로그인 필요"; return Result.success() }
+            val signed = try { Drive.token(ctx) != null } catch (e: Exception) { false }
+            // 연결 코드가 있는 보내는 폰은 로그인 없이 직접만
+            if (!signed && !s.codeOnly) { Status.note = "로그인 필요"; return Result.success() }
             // 큰 영상이 10분 넘게 걸려도 안 끊기게. 안드로이드 12+ 백그라운드에서는 거부될 수 있어 실패해도 진행.
             try { setForeground(foregroundInfo()) } catch (_: Exception) {}
-            val drive = Drive { Drive.token(ctx) ?: throw IllegalStateException("구글 로그인 필요") }
-            Status.stage(1, "드라이브 접속 중")
-            val folder = s.folderId ?: drive.folderId().also { s.folderId = it }
-            if (s.receiver) DirectService.sync(ctx) // 꺼져 있으면 다시 염
-            if (s.receiver) download(ctx, s, drive, folder) else upload(ctx, s, drive, folder, manual)
+            val drive = if (signed) Drive { Drive.token(ctx) ?: throw IllegalStateException("구글 로그인 필요") } else null
+            val folder = drive?.let { Status.stage(1, "드라이브 접속 중"); s.folderId ?: it.folderId().also { id -> s.folderId = id } }
+            if (s.receiver) download(ctx, s, drive!!, folder!!) else upload(ctx, s, drive, folder, manual)
             Result.success()
         } catch (e: CancelledByUser) {
             Status.note = "취소됨"; Result.success()

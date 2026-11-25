@@ -92,11 +92,18 @@ class MainActivity : ComponentActivity() {
     private fun probe() {
         if (probing || s.receiver || !s.directSend) return
         probing = true
-        thread {
-            probePeer = try { if (Direct.onWifi(this)) Direct.discover(this)?.name ?: "" else "" } catch (e: Exception) { "" }
-            probed = true; probing = false
-            emit("reload", "true")
-        }
+        thread { probeNow(); emit("reload", "true") }
+    }
+    /** 받는 폰 찾고, 찾으면 키(코드)가 맞는지 한 번 물어봄 */
+    private fun probeNow() {
+        probing = true
+        try {
+            val peer = try { if (Direct.onWifi(this)) Direct.discover(this) else null } catch (e: Exception) { null }
+            probePeer = peer?.name ?: ""
+            val key = peer?.let { Direct.sendKey(s, null, null) }
+            if (peer != null && key != null) Direct.ping(peer, key)?.let { s.keyBad = !it }
+            probed = true
+        } finally { probing = false }
     }
 
     private fun confirmDelete() {
@@ -145,22 +152,38 @@ class MainActivity : ComponentActivity() {
     }
 
     /** 로그인·용량·대기 개수를 새로 읽고 화면에 알림 */
-    private fun reload() = thread {
+    private fun reload() = thread { reloadNow(); emit("reload", "true") }
+    private fun reloadNow() {
         signedIn = try { Drive.token(this) != null } catch (e: Exception) { false }
-        if (signedIn) try {
-            val drive = Drive { Drive.token(this)!! }
-            val (limit, usage) = drive.quota()
-            quota = JSONObject().put("limit", limit ?: -1).put("usage", usage)
-            waiting = if (s.receiver) {
+        try {
+            val drive = if (signedIn) Drive { Drive.token(this)!! } else null
+            if (drive != null) {
+                val (limit, usage) = drive.quota()
+                quota = JSONObject().put("limit", limit ?: -1).put("usage", usage)
+            }
+            waiting = if (!s.receiver) {
+                val j = pendingJobs(this, s, manual = true)
+                JSONObject().put("n", j.size).put("b", j.sumOf { it.doc.size })
+            } else if (drive != null) {
                 val folder = s.folderId ?: drive.folderId().also { s.folderId = it }
                 val r = remoteJobs(drive, folder, s)
                 JSONObject().put("n", r.size).put("b", r.sumOf { it.r.size })
-            } else {
-                val j = pendingJobs(this, s, manual = true)
-                JSONObject().put("n", j.size).put("b", j.sumOf { it.doc.size })
-            }
+            } else waiting
         } catch (e: Exception) { log(this, "새로고침 실패: ${e.message}") }
-        emit("reload", "true")
+    }
+
+    /** 당겨서 새로 고침: 상태 다시 읽기 + (보내는 폰) 받는 폰 다시 찾기. 끝나면 app.on('refreshed') */
+    @Volatile private var refreshing = false
+    private fun pullRefresh() {
+        if (refreshing) return
+        refreshing = true
+        thread {
+            try {
+                val t = thread { reloadNow() }
+                if (!s.receiver && s.directSend) { while (probing) Thread.sleep(100); probeNow() }
+                t.join()
+            } finally { refreshing = false; emit("refreshed", "true") }
+        }
     }
 
     private fun emit(ev: String, json: String) = runOnUiThread {
@@ -181,9 +204,10 @@ class MainActivity : ComponentActivity() {
         @JavascriptInterface
         fun state(): String {
             val cm = getSystemService(ConnectivityManager::class.java)
+            val canRun = signedIn || s.codeOnly
             val note = when {
                 Status.busy -> Status.note
-                !signedIn -> "로그인 필요"
+                !canRun -> "로그인 필요"
                 s.wifiOnly && cm.isActiveNetworkMetered -> "와이파이 대기"
                 s.chargingOnly && !getSystemService(android.os.BatteryManager::class.java).isCharging -> "충전 대기"
                 Status.note.isNotEmpty() -> Status.note
@@ -191,7 +215,8 @@ class MainActivity : ComponentActivity() {
                 else -> ""
             }
             return JSONObject()
-                .put("receiver", s.receiver).put("signedIn", signedIn).put("auto", s.auto)
+                .put("receiver", s.receiver).put("signedIn", signedIn).put("canRun", canRun).put("auto", s.auto)
+                .put("pairCode", s.pairCode).put("peerCode", s.peerCode ?: "").put("keyBad", s.keyBad)
                 .put("direct", s.direct).put("lastPeer", s.lastPeer).put("directSend", s.directSend)
                 .put("probe", JSONObject().put("checked", probed).put("peer", probePeer))
                 .put("recvFolders", JSONArray(s.recvFolders.map { JSONObject().put("id", it.id).put("name", it.name).put("del", it.del) })).put("toDelete", s.toDelete.size)
@@ -221,6 +246,7 @@ class MainActivity : ComponentActivity() {
                 "receiver" -> { s.receiver = on; DirectService.sync(this@MainActivity); reload() }
                 "direct" -> { s.direct = on; DirectService.sync(this@MainActivity) }
                 "directSend" -> { s.directSend = on; probed = false; probePeer = "" }
+                "peerCode" -> { s.peerCode = value.filter { it.isDigit() }.takeIf { it.length == 6 }; s.keyBad = false; probed = false; probePeer = "" }
                 "auto" -> { s.auto = on; Status.note = "" }
                 "wifiOnly" -> s.wifiOnly = on
                 "chargingOnly" -> s.chargingOnly = on
@@ -289,6 +315,7 @@ class MainActivity : ComponentActivity() {
                 "signIn" -> signIn()
                 "cancel" -> cancelSync()
                 "probe" -> probe()
+                "refresh" -> pullRefresh()
                 "battery" -> askBattery()
                 "batteryOnce" -> {
                     val p = getSharedPreferences("settings", MODE_PRIVATE)

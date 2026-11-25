@@ -50,6 +50,18 @@ class Settings(ctx: Context) {
     var directKey: String?
         get() = p.getString("directKey", null)
         set(v) = p.edit().putString("directKey", v).apply()
+    /** 받는 폰: 다른 계정 폰과 짝짓는 6자리 코드 (처음 읽을 때 만듦) */
+    val pairCode: String
+        get() = p.getString("pairCode", null) ?: "%06d".format(java.security.SecureRandom().nextInt(1_000_000))
+            .also { p.edit().putString("pairCode", it).apply() }
+    /** 보내는 폰: 받는 폰 연결 코드. 있으면 구글 로그인 없이 직접 보냄 */
+    var peerCode: String?
+        get() = p.getString("peerCode", null)
+        set(v) = p.edit().putString("peerCode", v).apply()
+    /** 보내는 폰: 받는 폰이 코드(키)를 거절함 */
+    var keyBad: Boolean get() = bool("keyBad", false); set(v) = setBool("keyBad", v)
+    /** 보내는 폰이 로그인 없이 돌 수 있나 */
+    val codeOnly: Boolean get() = !receiver && directSend && peerCode != null
     var lastPeer: String
         get() = p.getString("lastPeer", "")!!
         set(v) = p.edit().putString("lastPeer", v).apply()

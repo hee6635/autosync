@@ -103,7 +103,7 @@ private fun key(d: Doc) = "${d.uri}|${d.size}|${d.modified}"
 private const val QUOTA_MARGIN = 200L * 1024 * 1024
 
 /** 보내는 폰: 폴더 → 드라이브 PixelSync/<하위 폴더>. 여러 개 동시에, 올리면서 MD5 계산 → 일치하면 폰에서 삭제 */
-suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String, manual: Boolean) {
+suspend fun upload(ctx: Context, s: Settings, drive: Drive?, folder: String?, manual: Boolean) {
     val cr = ctx.contentResolver
     val skipped = mutableMapOf<String, Int>()
     Status.stage(2, "폴더 확인 중")
@@ -111,8 +111,7 @@ suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String, manu
     val pending = s.pending
     if (jobs.isEmpty()) { clearPending(ctx, s, pending, emptySet()); Status.note = "보낼 파일 없음"; return }
 
-    Status.stage(3, "용량 확인 중")
-    val (limit, usage) = drive.quota()
+    val (limit, usage) = if (drive != null) { Status.stage(3, "용량 확인 중"); drive.quota() } else null to 0L
     val free = AtomicLong(if (limit == null) Long.MAX_VALUE else limit - usage)
     val subIds = ConcurrentHashMap<String, String>()
     val failedRoots = ConcurrentHashMap.newKeySet<String>()
@@ -123,7 +122,8 @@ suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String, manu
 
     // 같은 와이파이에 받는 폰이 있으면 묻지 않고 직접, 없으면 클라우드
     val peer = if (s.directSend && Direct.onWifi(ctx)) try { Direct.discover(ctx) } catch (e: Exception) { null } else null
-    val dkey = peer?.let { try { Direct.key(s, drive, folder) } catch (e: Exception) { null } }
+    val dkey = peer?.let { Direct.sendKey(s, drive, folder) }
+    if (drive == null && (peer == null || dkey == null)) { Status.note = "받는 폰 안 보임 · 대기"; return }
     val direct = AtomicBoolean(peer != null && dkey != null)
     val batch = JSONObject().put("id", UUID.randomUUID().toString()).put("count", jobs.size).put("bytes", jobs.sumOf { it.doc.size })
     val from = s.defaultSub()
@@ -149,8 +149,10 @@ suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String, manu
                             val input = cr.openInputStream(d.uri) ?: throw java.io.IOException("파일을 열 수 없음")
                             viaDirect = Direct.send(peer!!, dkey!!, from, d, batch, input) { n -> Status.progress(d.name, n) }
                             if (!viaDirect) throw java.io.IOException("MD5 불일치")
+                            if (s.keyBad) s.keyBad = false
                         } catch (e: java.io.IOException) {
                             if (e is CancelledByUser) throw e
+                            if (e.message == "받는 폰: ERR key") s.keyBad = true
                             if (direct.getAndSet(false)) {
                                 log(ctx, "직접 전송 끊김, 클라우드로: ${e.message}")
                                 Status.route = "cloud"
@@ -158,13 +160,14 @@ suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String, manu
                             Status.begin(d.name, d.size)
                         }
                         if (!viaDirect) {
-                        val sub = synchronized(subIds) { subIds.getOrPut(j.sub) { drive.folderId(j.sub, folder) } } // 같은 폴더를 두 번 만들지 않게
+                        val dr = drive ?: throw java.io.IOException("받는 폰 연결 끊김") // 로그인 없이 직접만 보내는 중
+                        val sub = synchronized(subIds) { subIds.getOrPut(j.sub) { dr.folderId(j.sub, folder!!) } } // 같은 폴더를 두 번 만들지 않게
                         val md = MessageDigest.getInstance("MD5")
                         val input = cr.openInputStream(d.uri) ?: throw java.io.IOException("파일을 열 수 없음")
-                        val r = drive.upload(sub, d.name, d.size, d.modified, d.mime.ifEmpty { "application/octet-stream" },
+                        val r = dr.upload(sub, d.name, d.size, d.modified, d.mime.ifEmpty { "application/octet-stream" },
                             DigestInputStream(input, md)) { n -> Status.progress(d.name, n) }
                         if (r.md5 != hex(md.digest())) {
-                            drive.delete(r.id)
+                            dr.delete(r.id)
                             throw java.io.IOException("MD5 불일치, 폰 파일 보관")
                         }
                         free.addAndGet(-d.size)
@@ -192,7 +195,7 @@ suspend fun upload(ctx: Context, s: Settings, drive: Drive, folder: String, manu
         Status.stop()
     }
     clearPending(ctx, s, pending, failedRoots)
-    Status.note = if (Status.cancelled) "취소됨" else "완료 · ${sent.get()}개 보냄"
+    Status.note = if (Status.cancelled) "취소됨" else if (sent.get() == 0 && s.keyBad) "연결 코드 다름" else "완료 · ${sent.get()}개 보냄"
     log(ctx, (if (Status.cancelled) "취소됨, " else "") + "보내기 ${sent.get()}/${jobs.size}개" + if (skipped.isEmpty()) "" else ", 건너뜀 " + skipped.entries.joinToString { "${it.key} ${it.value}" })
 }
 

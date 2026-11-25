@@ -60,6 +60,9 @@ object DirectProto {
         val input = BufferedInputStream(sock.getInputStream())
         val out = BufferedOutputStream(sock.getOutputStream(), 1 shl 16)
         out.write((header.toString() + "\n").toByteArray())
+        out.flush()
+        val go = readLine(input)
+        if (go != "GO") throw IOException("받는 폰: $go")
         val md = MessageDigest.getInstance("MD5")
         data.use { copy(DigestInputStream(it, md), out, progress) }
         out.flush()
@@ -72,15 +75,17 @@ object DirectProto {
 
     /** 받기 한 건. 헤더 확인 → 임시 파일 → MD5 → OK면 이름 바꿔 저장. 저장한 파일을 돌려줌(아니면 null). */
     fun receive(
-        sock: Socket, key: String, dir: File, freeBytes: () -> Long, minFree: Long,
+        sock: Socket, keyOk: (String) -> Boolean, dir: File, freeBytes: () -> Long, minFree: Long,
         onHeader: (JSONObject, String) -> Unit, progress: (String, Long) -> Unit,
     ): File? {
         val input = BufferedInputStream(sock.getInputStream(), 1 shl 16)
         val out = sock.getOutputStream()
         val h = JSONObject(readLine(input))
-        if (h.optString("key") != key) { writeLine(out, "ERR key"); return null }
+        if (!keyOk(h.optString("key"))) { writeLine(out, "ERR key"); return null }
+        if (h.optBoolean("ping")) { writeLine(out, "GO"); return null }
         val size = h.getLong("size")
         if (size < 0 || freeBytes() - size < minFree) { writeLine(out, "ERR full"); return null }
+        writeLine(out, "GO")
         val label = h.optString("from").let { if (it.isEmpty()) h.getString("name") else "$it / ${h.getString("name")}" }
         val target = synchronized(receiving) { uniqueFile(dir, safeName(h.getString("name")), receiving).also { receiving += it.name } }
         val tmp = File(dir, ".${target.name}.part")
@@ -165,6 +170,20 @@ object Direct {
         return found
     }
 
+    /** 보내는 폰이 쓸 키: 연결 코드가 있으면 그것, 없으면 같은 계정 드라이브 키 */
+    fun sendKey(s: Settings, drive: Drive?, folder: String?): String? =
+        s.peerCode ?: if (drive != null && folder != null) try { key(s, drive, folder) } catch (e: Exception) { null } else s.directKey
+
+    /** 받는 폰이 이 키를 받아 주나. 연결 안 되면 null */
+    fun ping(peer: Peer, key: String): Boolean? = try {
+        Socket().use { sock ->
+            sock.connect(InetSocketAddress(peer.host, peer.port), 3_000)
+            sock.soTimeout = 5_000
+            sock.getOutputStream().apply { write((JSONObject().put("key", key).put("ping", true).toString() + "\n").toByteArray()); flush() }
+            DirectProto.readLine(BufferedInputStream(sock.getInputStream())) == "GO"
+        }
+    } catch (e: Exception) { null }
+
     /** 한 파일 직접 보내기. 받는 폰이 저장까지 끝냈으면 true. */
     fun send(peer: Peer, key: String, from: String, d: Doc, batch: JSONObject, data: InputStream, progress: (Long) -> Unit): Boolean =
         Socket().use { sock ->
@@ -205,10 +224,12 @@ class DirectService : Service() {
 
     private fun start() {
         val s = Settings(this)
+        // 같은 계정 키(드라이브). 로그인 안 돼 있으면 연결 코드로만 받음
         val key = try {
             val drive = Drive { Drive.token(this) ?: throw IOException("구글 로그인 필요") }
             Direct.key(s, drive, s.folderId ?: drive.folderId().also { s.folderId = it })
-        } catch (e: Exception) { log(this, "직접 받기 시작 실패: ${e.message}"); stopSelf(); return }
+        } catch (e: Exception) { s.directKey }
+        val code = s.pairCode
         val ss = ServerSocket(0).also { server = it }
         val info = NsdServiceInfo().apply { serviceName = "AutoSync-${Build.MODEL}"; serviceType = "_autosync._tcp"; port = ss.localPort }
         nsd = object : NsdManager.RegistrationListener {
@@ -221,15 +242,27 @@ class DirectService : Service() {
         val dir = cameraDir().apply { mkdirs() }
         while (!ss.isClosed) {
             val sock = try { ss.accept() } catch (e: IOException) { break }
-            thread { handle(sock, key, dir, s) }
+            thread { handle(sock, { k -> keyOk(k, key, code) }, dir, s) }
         }
     }
 
-    private fun handle(sock: Socket, key: String, dir: File, s: Settings) = sock.use {
+    // 코드 맞히기 막기: 5번 틀리면 1분 동안 코드는 안 받음
+    private var wrong = 0
+    private var lockedUntil = 0L
+    @Synchronized private fun keyOk(k: String, key: String?, code: String): Boolean {
+        if (key != null && k == key) return true
+        val now = System.currentTimeMillis()
+        if (now < lockedUntil) return false
+        if (k == code) { wrong = 0; return true }
+        if (++wrong >= 5) { wrong = 0; lockedUntil = now + 60_000; log(this, "연결 코드 5번 틀림, 1분 잠금") }
+        return false
+    }
+
+    private fun handle(sock: Socket, keyOk: (String) -> Boolean, dir: File, s: Settings) = sock.use {
         it.soTimeout = 60_000
         var label = ""; var size = 0L
         try {
-            val f = DirectProto.receive(it, key, dir, { StatFs(dir.path).availableBytes }, s.minFreeGb * 1024L * 1024 * 1024,
+            val f = DirectProto.receive(it, keyOk, dir, { StatFs(dir.path).availableBytes }, s.minFreeGb * 1024L * 1024 * 1024,
                 onHeader = { h, l -> label = l; size = h.getLong("size"); begin(h, l, s) },
                 progress = { l, n -> Status.items[l]?.set(0, n); lastActive = System.currentTimeMillis() })
             if (f != null) {

@@ -9,6 +9,7 @@
 <body>
 
 <main id="home" class="screen">
+  <span class="ptr" id="ptr"><svg><use href="#i-spin"/></svg></span>
   <header class="top">
     <h1>Auto Sync</h1>
     <button class="icon" aria-label="설정" data-go="settings"><svg><use href="#i-gear"/></svg></button>
@@ -75,12 +76,14 @@
   <h2>보내는 폰</h2>
   <div class="rows card list">
     <button class="row" data-sw="directSend"><svg class="ic"><use href="#i-wifi"/></svg><span class="label">와이파이로 바로 보내기</span><span class="sw"><span class="k"></span></span></button>
+    <button class="row" id="codeRow"><svg class="ic"><use href="#i-phone"/></svg><span class="label">받는 폰 코드</span><span class="val" id="vPeerCode"></span><svg class="chev"><use href="#i-chev"/></svg></button>
     <button class="row" data-sw="deleteAfter"><svg class="ic"><use href="#i-trash"/></svg><span class="label">보낸 후 삭제</span><span class="sw"><span class="k"></span></span></button>
     <button class="row last" data-time="up"><svg class="ic"><use href="#i-clock"/></svg><span class="label">예약 업로드</span><span class="val" id="vUp"></span><svg class="chev"><use href="#i-chev"/></svg></button>
   </div>
   <h2>받는 폰</h2>
   <div class="rows card list">
     <button class="row" data-sw="direct"><svg class="ic"><use href="#i-wifi"/></svg><span class="label">와이파이로 직접 받기</span><span class="sw"><span class="k"></span></span></button>
+    <div class="row"><svg class="ic"><use href="#i-phone"/></svg><span class="label">연결 코드</span><span class="val code" id="vCode"></span></div>
     <div class="row"><svg class="ic"><use href="#i-phone"/></svg><span class="label">짝지은 폰</span><span class="val" id="vPeer"></span></div>
     <button class="row" data-pick="minFreeGb"><svg class="ic"><use href="#i-hdd"/></svg><span class="label">받기 중지</span><span class="val" id="vMinFree"></span><svg class="chev"><use href="#i-chev"/></svg></button>
     <button class="row last" data-time="down"><svg class="ic"><use href="#i-clock"/></svg><span class="label">예약 다운로드</span><span class="val" id="vDown"></span><svg class="chev"><use href="#i-chev"/></svg></button>
@@ -120,6 +123,13 @@
   <div class="sheetTitle"><svg><use href="#i-folder"/></svg><b id="recvName"></b></div>
   <div class="pills big" id="recvPills"><button data-rdel="false">받아도 남기기</button><button data-rdel="true">받으면 지우기</button><span class="plate"></span></div>
   <div class="btns"><button class="secondary" id="recvRemove">빼기</button></div>
+</section>
+
+<section class="sheet" id="codeSheet" aria-label="받는 폰 코드">
+  <span class="grip"></span>
+  <div class="sheetTitle"><svg><use href="#i-phone"/></svg><b>받는 폰 연결 코드</b></div>
+  <input class="codeIn" id="codeIn" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="off">
+  <div class="btns"><button class="secondary" id="codeOff">지우기</button><button class="primary" id="codeSave">저장</button></div>
 </section>
 
 <section class="sheet" id="timeSheet" aria-label="예약">

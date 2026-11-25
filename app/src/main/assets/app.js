@@ -155,8 +155,9 @@ function renderHome() {
   if (!moving) {
     if (S.receiver) { link = !S.direct ? '직접 받기 꺼짐' : st.listening ? '직접 받기 대기 중' : '직접 받기 준비 중'; on = S.direct && st.listening; }
     else if (!S.directSend) link = '바로 보내기 꺼짐';
+    else if (S.probe.peer && S.keyBad) link = `${S.probe.peer} · 연결 코드 다름`;
     else if (S.probe.peer) { link = `${S.probe.peer}로 바로 보내기 가능`; on = true; }
-    else if (S.probe.checked) link = '받는 폰 안 보임 · 클라우드로 보냄';
+    else if (S.probe.checked) link = S.signedIn ? '받는 폰 안 보임 · 클라우드로 보냄' : '받는 폰 안 보임 · 대기';
   }
   $('#link').classList.toggle('hide', !link);
   $('#link').classList.toggle('off', !on);
@@ -169,7 +170,7 @@ function renderHome() {
   }
 
   let btn, cls = 'primary', bic = '';
-  if (!S.signedIn) btn = '구글 로그인';
+  if (!S.canRun) btn = '구글 로그인';
   else if (st.cancelled && st.busy) { btn = '취소하는 중'; cls += ' soft'; bic = 'spin'; }
   else if (moving) { btn = '취소하기'; cls += ' stop'; bic = 'stop'; }
   else if (prep || pressed) { btn = '시작 중'; cls += ' soft'; bic = 'spin'; }
@@ -179,7 +180,7 @@ function renderHome() {
     mb._key = key; mb.className = cls;
     mb.innerHTML = (bic ? `<svg class="${bic === 'spin' ? 'spin' : ''}"><use href="#i-${bic}"/></svg>` : '') + `<span>${btn}</span>`;
   }
-  mb.dataset.state = !S.signedIn ? 'login' : moving && !st.cancelled ? 'cancel' : (st.busy || pressed) ? 'wait' : 'go';
+  mb.dataset.state = !S.canRun ? 'login' : moving && !st.cancelled ? 'cancel' : (st.busy || pressed) ? 'wait' : 'go';
 }
 let pressedAt = 0;
 
@@ -310,6 +311,8 @@ function fillSettings() {
   setText($('#autoLabel'), S.receiver ? '자동 받기' : '자동 보내기');
   setText($('#vBattery'), S.batteryOk ? '허용됨' : '허용하기');
   setText($('#vPeer'), S.lastPeer || '아직 없음');
+  setText($('#vCode'), S.pairCode);
+  setText($('#vPeerCode'), S.peerCode || '없음');
 }
 
 /* ---------- 예약 · 고르기 창 ---------- */
@@ -361,6 +364,7 @@ document.addEventListener('click', (e) => {
   if (d.go) { if (d.tab) recentTab = Number(d.tab); return openPage(d.go); }
   if (d.time) return openTime(d.time);
   if (d.pick) return openPick(d.pick);
+  if (t.id === 'codeRow') { $('#codeIn').value = S.peerCode; openLayer($('#codeSheet')); setTimeout(() => $('#codeIn').focus(), 300); return; }
   if (d.act) {
     A.act(d.act, '');
     if (d.act === 'copy') { setText($('#copyBtn'), '복사됨'); setTimeout(() => setText($('#copyBtn'), '복사'), 1200); }
@@ -417,6 +421,11 @@ document.addEventListener('click', (e) => {
       openLayer($('#recvAsk')); break;
     }
     case 'recvRemove': A.removeRecvFolder(recvSel.id); closeTop(); setTimeout(() => { refresh(); fillRecv(); }, 100); break;
+    case 'codeSave': case 'codeOff': {
+      const v = t.id === 'codeOff' ? '' : $('#codeIn').value.replace(/\D/g, '');
+      if (t.id === 'codeSave' && v.length !== 6) { $('#codeIn').focus(); break; }
+      A.set('peerCode', v); $('#codeIn').blur(); closeTop(); refresh(); fillSettings(); setTimeout(probe, 100); break;
+    }
     case 'timeOff': A.set(timeKey, '-1,-1'); closeTop(); refresh(); fillSettings(); break;
   }
 });
@@ -430,6 +439,7 @@ window.app = {
     return closeTop();
   },
   on: (ev, data) => {
+    if (ev === 'refreshed') pullDone();
     if (ev === 'reload') { refresh(); if ($('#folders').classList.contains('on')) fillFolders(); }
     if (ev === 'dfolders') {
       const cur = drivePath[drivePath.length - 1];
@@ -447,4 +457,39 @@ setInterval(refresh, 800); // 진행률 갱신 (메모리 값만 읽어서 가�
 const probe = () => { if (S && !S.receiver && S.directSend && document.visibilityState === 'visible') A.act('probe', ''); };
 setTimeout(probe, 500); setInterval(probe, 30000);
 document.addEventListener('visibilitychange', probe);
+
+/* ---------- 당겨서 새로 고침 (홈 맨 위에서 아래로) ---------- */
+const home = $('#home'), ptr = $('#ptr');
+let pullY = null, pullD = 0, pulling = false;
+const PULL = 70;
+home.addEventListener('touchstart', (e) => {
+  if (pulling || stack.length || home.scrollTop > 0) { pullY = null; return; }
+  pullY = e.touches[0].clientY; pullD = 0; ptr.classList.add('drag');
+}, { passive: true });
+home.addEventListener('touchmove', (e) => {
+  if (pullY === null) return;
+  const dy = e.touches[0].clientY - pullY;
+  if (dy <= 0 || home.scrollTop > 0) { pullD = 0; ptr.style.transform = ''; return; }
+  pullD = Math.min(110, dy * 0.5);
+  ptr.style.transform = `translateY(${pullD}px) rotate(${pullD * 4}deg)`;
+  ptr.style.opacity = Math.min(1, pullD / PULL);
+  ptr.classList.toggle('ready', pullD >= PULL);
+}, { passive: true });
+home.addEventListener('touchend', () => {
+  if (pullY === null) return;
+  pullY = null; ptr.classList.remove('drag', 'ready');
+  if (pullD >= PULL) {
+    pulling = true; pullStart = Date.now();
+    ptr.style.transform = `translateY(${PULL}px)`; ptr.style.opacity = 1; ptr.classList.add('spin');
+    A.act('refresh', '');
+  } else { ptr.style.transform = ''; ptr.style.opacity = 0; }
+});
+let pullStart = 0;
+function pullDone() {
+  setTimeout(() => {
+    pulling = false; refresh(); fillSettings();
+    ptr.classList.remove('spin'); ptr.style.transform = ''; ptr.style.opacity = 0;
+  }, Math.max(0, 600 - (Date.now() - pullStart))); // 너무 빨리 끝나도 도는 표시는 잠깐 보이게
+}
+
 window.addEventListener('resize', () => $$('.tabs,.pills').forEach((g) => g.classList.contains('tabs') ? slideBar(g) : slidePlate(g)));

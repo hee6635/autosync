@@ -222,3 +222,14 @@ h2 { margin: 18px 0 8px 6px; }
 #driveUp { width: 36px; height: 36px; margin-left: -8px; }
 #driveOpts { max-height: 45vh; overflow-y: auto; }
 #driveOpts .empty { color: var(--sub); padding: 12px 4px; font-size: 15px; }
+
+/* 연결 코드 · 당겨서 새로 고침 (v0.9) */
+.val.code { font-weight: 900; letter-spacing: 2px; color: var(--acc); font-variant-numeric: tabular-nums; }
+.codeIn { height: 64px; border-radius: 16px; border: 2px solid var(--line); text-align: center; font-size: 30px; font-weight: 900; letter-spacing: 10px; color: var(--fg); background: #fff; font-variant-numeric: tabular-nums; }
+.codeIn:focus { outline: 0; border-color: var(--acc2); }
+.codeIn::placeholder { color: #D1D6DB; }
+.ptr { position: fixed; top: -36px; left: 50%; z-index: 3; width: 40px; height: 40px; margin-left: -20px; border-radius: 20px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.12); color: var(--sub); display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: transform var(--t) var(--ease), opacity var(--t) var(--ease), color .2s; }
+.ptr.drag { transition: color .2s; }
+.ptr.ready, .ptr.spin { color: var(--acc); }
+.ptr svg { width: 20px; height: 20px; stroke-width: 3; }
+.ptr.spin svg { animation: spin .8s linear infinite; }
