@@ -13,12 +13,12 @@ import java.nio.file.Files
 import kotlin.concurrent.thread
 
 class DirectTest {
-    private fun roundTrip(sendKey: String, data: ByteArray, dir: File): Pair<Boolean, File?> {
+    private fun roundTrip(sendKey: String, data: ByteArray, dir: File, onErr: (String) -> Unit = {}): Pair<Boolean, File?> {
         val server = ServerSocket(0)
         var saved: File? = null
         val t = thread {
             server.accept().use { s ->
-                saved = try { DirectProto.receive(s, "secret", dir, { Long.MAX_VALUE }, 0, { _, _ -> }, { _, _ -> }) } catch (e: Exception) { null }
+                saved = try { DirectProto.receive(s, { it == "secret" }, dir, { Long.MAX_VALUE }, 0, { _, _ -> }, { _, _ -> }) } catch (e: Exception) { null }
             }
         }
         val ok = try {
@@ -26,7 +26,7 @@ class DirectTest {
                 val h = JSONObject().put("key", sendKey).put("from", "A").put("name", "p.jpg").put("size", data.size).put("modified", 1_000_000L)
                 DirectProto.send(s, h, data.inputStream()) {}
             }
-        } catch (e: Exception) { false }
+        } catch (e: Exception) { onErr(e.message ?: ""); false }
         t.join(5_000); server.close()
         return ok to saved
     }
@@ -44,8 +44,10 @@ class DirectTest {
 
     @Test fun wrongKeyRejected() {
         val dir = Files.createTempDirectory("d").toFile()
-        val (ok, f) = roundTrip("nope", ByteArray(10), dir)
+        var err = ""
+        val (ok, f) = roundTrip("nope", ByteArray(10), dir) { err = it }
         assertTrue(!ok)
+        assertEquals("받는 폰: ERR key", err) // 파일 보내기 전에 거절
         assertNull(f)
         assertEquals(0, dir.listFiles()!!.size)
     }
