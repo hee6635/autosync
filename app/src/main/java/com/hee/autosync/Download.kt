@@ -109,6 +109,7 @@ suspend fun download(ctx: Context, s: Settings, drive: Drive, folder: String) {
                         }
                         MediaScannerConnection.scanFile(ctx, arrayOf(target.path), null, null)
                         Stats.add(ctx, "down", target.name, r.size)
+                        Kept.add(ctx, target)
                         afterGot(ctx, s, drive, j)
                         got.incrementAndGet()
                     } catch (e: Exception) {

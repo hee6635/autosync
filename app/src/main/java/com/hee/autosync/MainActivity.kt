@@ -117,6 +117,15 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleShare(intent)
+        wakeIfAsked(intent)
+    }
+
+    /** 공간 확보 누르기 전: 화면 켜고 잠금(없음/밀기) 넘기기 */
+    private fun wakeIfAsked(i: Intent?) {
+        if (i?.getBooleanExtra("wake", false) != true) return
+        i.removeExtra("wake")
+        setShowWhenLocked(true); setTurnScreenOn(true)
+        getSystemService(android.app.KeyguardManager::class.java).requestDismissKeyguard(this, null)
     }
     private val askPerms = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { reload() }
 
@@ -144,6 +153,7 @@ class MainActivity : ComponentActivity() {
         schedule(this)
         DirectService.sync(this)
         handleShare(intent)
+        wakeIfAsked(intent)
     }
 
     override fun onResume() {
@@ -154,6 +164,7 @@ class MainActivity : ComponentActivity() {
     /** 로그인·용량·대기 개수를 새로 읽고 화면에 알림 */
     private fun reload() = thread { reloadNow(); emit("reload", "true") }
     private fun reloadNow() {
+        if (s.receiver) try { Kept.check(this) } catch (_: Exception) {}
         signedIn = try { Drive.token(this) != null } catch (e: Exception) { false }
         try {
             val drive = if (signedIn) Drive { Drive.token(this)!! } else null
@@ -236,6 +247,11 @@ class MainActivity : ComponentActivity() {
                 .put("waiting", waiting)
                 .put("status", Status.json().put("note", note))
                 .put("stats", Stats.summary(this@MainActivity))
+                .put("freeUp", Kept.summary(this@MainActivity).let { (n, b) ->
+                    JSONObject().put("on", FreeUpService.enabled(this@MainActivity) && FreeUpService.instance != null)
+                        .put("state", FreeUpService.state).put("result", s.freeUpResult).put("n", n).put("b", b)
+                        .put("recording", System.currentTimeMillis() < FreeUpService.recordUntil)
+                })
                 .toString()
         }
 
@@ -316,6 +332,9 @@ class MainActivity : ComponentActivity() {
                 "cancel" -> cancelSync()
                 "probe" -> probe()
                 "refresh" -> pullRefresh()
+                "freeUp" -> if (!FreeUpService.start(this@MainActivity, manual = true)) openA11y()
+                "a11y" -> openA11y()
+                "recordScreen" -> if (FreeUpService.instance == null) openA11y() else FreeUpService.record(this@MainActivity)
                 "battery" -> askBattery()
                 "batteryOnce" -> {
                     val p = getSharedPreferences("settings", MODE_PRIVATE)
@@ -334,7 +353,8 @@ class MainActivity : ComponentActivity() {
                 "storage" -> askPerms.launch(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE))
                 "reload" -> reload()
                 "copy" -> getSystemService(android.content.ClipboardManager::class.java)
-                    .setPrimaryClip(android.content.ClipData.newPlainText("autosync", readLog(this@MainActivity)))
+                    .setPrimaryClip(android.content.ClipData.newPlainText("autosync", readLog(this@MainActivity) +
+                        FreeUpService.screenFile(this@MainActivity).takeIf { it.exists() }?.let { "\n\n=== 화면 구조 ===\n" + it.readText() }.orEmpty()))
             }
         }
     }
@@ -348,6 +368,8 @@ class MainActivity : ComponentActivity() {
             }
             .addOnFailureListener { log(this, "로그인 실패: ${it.message}"); reload() }
     }
+
+    private fun openA11y() = startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
 
     @SuppressLint("BatteryLife") // 개인용 앱: 백그라운드 전송이 끊기지 않게 직접 요청
     private fun askBattery() {

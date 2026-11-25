@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- 같은 와이파이에서 받는 폰 찾기(mDNS) -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- 공간 확보 누를 때 화면 켜기 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- 받는 폰(픽셀1, 안드로이드 10)이 DCIM/Camera에 직접 쓰기 위함 -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
 
@@ -39,6 +41,18 @@
             android:name=".DirectService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- 구글포토 "기기 공간 확보" 대신 누르기 -->
+        <service
+            android:name=".FreeUpService"
+            android:exported="true"
+            android:label="Auto Sync 공간 확보"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/freeup" />
+        </service>
 
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"

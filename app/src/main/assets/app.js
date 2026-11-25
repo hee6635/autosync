@@ -80,6 +80,7 @@ function homeRows() {
   const r = S.receiver ? [
     { icon: 'cloud', label: '구글 계정', val: qv },
     { icon: 'hdd', label: '폰 남은 공간', val: size(S.phoneFree) },
+    freeUpRow(),
     { icon: 'folder', label: '받을 폴더', val: S.recvFolders.length ? `PixelSync 외 ${S.recvFolders.length}개` : 'PixelSync', go: 'recvFolders' },
     { icon: 'clock', label: '예약', val: win(S.down), time: 'down' },
   ] : [
@@ -93,9 +94,16 @@ function homeRows() {
   const used = q && q.limit > 0 ? Math.min(100, q.usage / q.limit * 100).toFixed(1) : 0;
   return r.map((x) => row(x) + (x.label === '구글 계정' && q && q.limit > 0 ? `<div class="qbar"><i style="width:${used}%"></i></div>` : '')).join('');
 }
+// 받는 폰: 구글포토 기기 공간 확보. 누르면 지금 누르기 (접근성 꺼져 있으면 설정 열기)
+function freeUpRow() {
+  const f = S.freeUp;
+  if (!f.on) return { icon: 'trash', color: 'red', label: '기기 공간 확보', val: '접근성 켜기', act: 'a11y' };
+  const val = f.state || (f.n ? `남음 ${num(f.n)}개 · ${size(f.b)}` : '남은 것 없음') + (f.result ? ' · ' + f.result.replace(/ · 남음 \d+개/, '') : '');
+  return { icon: 'trash', label: '기기 공간 확보', val, act: 'freeUp' };
+}
 function homeTiles() {
   const st = S.stats.today;
-  const T = S.receiver ? [['down', 'blue', '오늘 다운로드', 'down'], ['trash', 'red', '클라우드 삭제', 'delCloud']]
+  const T = S.receiver ? [['down', 'blue', '오늘 다운로드', 'down'], ['trash', 'red', '장치에서 삭제', 'delLocal']]
                        : [['up', 'blue', '오늘 업로드', 'up'], ['trash', 'red', '장치에서 삭제', 'delLocal']];
   return T.map(([ic, c, l, k], i) => `<button class="tile" data-go="recent" data-tab="${i}"><span class="tl">${icon(ic, c)}${l}</span><span class="tv"><b>${num(st[k].n)}개</b> · ${size(st[k].b)}</span></button>`).join('');
 }
@@ -262,11 +270,12 @@ function refresh() {
 
 /* ---------- 최근 변경사항 ---------- */
 let recentTab = 0, recentRange = 'today';
-const RT = () => S.receiver ? [['down', '다운로드', 'down', 'blue'], ['delCloud', '클라우드에서 삭제', 'trash', 'red']]
+const RT = () => S.receiver ? [['down', '다운로드', 'down', 'blue'], ['delLocal', '장치에서 삭제', 'trash', 'red'], ['delCloud', '클라우드에서 삭제', 'trash', 'red']]
                              : [['up', '업로드', 'up', 'blue'], ['delLocal', '장치에서 삭제', 'trash', 'red']];
 function fillRecent() {
   const tabs = $('#recentTabs').querySelectorAll('button');
-  RT().forEach((t, i) => { tabs[i].textContent = t[1]; tabs[i].classList.toggle('sel', i === recentTab); });
+  if (recentTab >= RT().length) recentTab = 0;
+  tabs.forEach((b, i) => { const t = RT()[i]; b.hidden = !t; if (t) b.textContent = t[1]; b.classList.toggle('sel', i === recentTab); });
   $$('#rangePills button').forEach((b) => b.classList.toggle('sel', b.dataset.r === recentRange));
   const [type, , ic, color] = RT()[recentTab];
   const sum = S.stats[recentRange === 'today' ? 'today' : 'total'][type];
@@ -312,6 +321,7 @@ function fillSettings() {
   setText($('#vBattery'), S.batteryOk ? '허용됨' : '허용하기');
   setText($('#vPeer'), S.lastPeer || '아직 없음');
   setText($('#vCode'), S.pairCode);
+  setText($('#vRecord'), S.freeUp.recording ? '기록 중' : '');
   setText($('#vPeerCode'), S.peerCode || '없음');
 }
 
@@ -367,6 +377,7 @@ document.addEventListener('click', (e) => {
   if (t.id === 'codeRow') { $('#codeIn').value = S.peerCode; openLayer($('#codeSheet')); setTimeout(() => $('#codeIn').focus(), 300); return; }
   if (d.act) {
     A.act(d.act, '');
+    if (d.act === 'recordScreen') setTimeout(fillSettings, 300);
     if (d.act === 'copy') { setText($('#copyBtn'), '복사됨'); setTimeout(() => setText($('#copyBtn'), '복사'), 1200); }
     return;
   }

@@ -62,6 +62,11 @@ class Settings(ctx: Context) {
     var keyBad: Boolean get() = bool("keyBad", false); set(v) = setBool("keyBad", v)
     /** 보내는 폰이 로그인 없이 돌 수 있나 */
     val codeOnly: Boolean get() = !receiver && directSend && peerCode != null
+    /** 받는 폰 공간 확보: 마지막으로 누른 때 · 마지막 변화(새로 받음/사라짐) · 결과 한 줄 · 연속 실패 */
+    var freeUpLast: Long get() = p.getLong("freeUpLast", 0); set(v) = p.edit().putLong("freeUpLast", v).apply()
+    var freeUpChanged: Long get() = p.getLong("freeUpChanged", 0); set(v) = p.edit().putLong("freeUpChanged", v).apply()
+    var freeUpResult: String get() = p.getString("freeUpResult", "")!!; set(v) = p.edit().putString("freeUpResult", v).apply()
+    var freeUpFails: Int get() = int("freeUpFails", 0); set(v) = setInt("freeUpFails", v)
     var lastPeer: String
         get() = p.getString("lastPeer", "")!!
         set(v) = p.edit().putString("lastPeer", v).apply()

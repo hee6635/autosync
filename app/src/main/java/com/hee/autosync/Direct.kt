@@ -268,6 +268,7 @@ class DirectService : Service() {
             if (f != null) {
                 MediaScannerConnection.scanFile(this, arrayOf(f.path), null, null)
                 Stats.add(this, "down", f.name, f.length())
+                Kept.add(this, f)
                 got++
                 showNote("${from}에서 받는 중 · $got/$count")
             }

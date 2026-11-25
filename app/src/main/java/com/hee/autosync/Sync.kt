@@ -67,6 +67,7 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
         } finally {
             Status.busy = false
             Status.step = -1
+            if (s.receiver) try { FreeUpService.maybe(ctx) } catch (e: Exception) { log(ctx, "공간 확보 확인 실패: ${e.message}") }
         }
     }
 
